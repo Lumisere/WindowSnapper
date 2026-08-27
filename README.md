@@ -1,6 +1,6 @@
 # WindowSnapper
 
-WindowSnapper is a small WPF utility for taking screenshots of a window on a timer.
+WindowSnapper is a small utility for taking screenshots of a window on a timer.
 
 ## What it does
 
