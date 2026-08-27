@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using Windows.Graphics.Capture;
 using WinRT;
 
-namespace WindowSnapper.Services;
+namespace WindowSnapper.Platforms.Windows;
 
 internal static class CaptureInterop
 {

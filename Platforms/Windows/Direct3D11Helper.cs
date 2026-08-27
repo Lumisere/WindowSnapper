@@ -3,7 +3,7 @@ using SharpDX.Direct3D11;
 using Windows.Graphics.DirectX.Direct3D11;
 using WinRT;
 
-namespace WindowSnapper.Services;
+namespace WindowSnapper.Platforms.Windows;
 
 internal static class Direct3D11Helper
 {

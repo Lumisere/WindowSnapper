@@ -1,0 +1,190 @@
+<Window
+    x:Class="WindowSnapper.SettingsWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:CompileBindings="False"
+    Title="WindowSnapper Settings"
+    Width="780"
+    Height="980"
+    MinWidth="660"
+    MinHeight="840"
+    CanResize="True"
+    CanMinimize="False"
+    CanMaximize="False"
+    WindowDecorations="None"
+    ExtendClientAreaToDecorationsHint="True"
+    UseLayoutRounding="True"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner"
+    TransparencyLevelHint="Transparent"
+    Background="Transparent">
+
+  <Border
+      Background="#0E1116"
+      BorderBrush="#303640"
+      BorderThickness="1"
+      CornerRadius="20"
+      ClipToBounds="True">
+    <Grid RowDefinitions="42,*,58">
+
+      <Border Grid.Row="0" BorderBrush="#292E36" BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="*,Auto">
+          <Border Background="Transparent" WindowDecorationProperties.ElementRole="TitleBar">
+            <TextBlock
+                Text="Settings"
+                Margin="15,0,0,0"
+                FontSize="12.5"
+                FontWeight="SemiBold"
+                VerticalAlignment="Center"
+                Foreground="#F2F3F5" />
+          </Border>
+          <Button Grid.Column="1" Classes="titlebar close" Content="×" FontSize="17" Click="Close_Click" WindowDecorationProperties.ElementRole="CloseButton" />
+        </Grid>
+      </Border>
+
+      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="22,17,22,18" Spacing="0">
+          <!-- APPEARANCE -->
+          <Grid ColumnDefinitions="Auto,12,*">
+            <TextBlock Classes="section-title" Text="Appearance" VerticalAlignment="Center" />
+            <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid Margin="0,12,0,0" RowDefinitions="Auto,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel>
+                <TextBlock Classes="sub-title" Text="Interface scale" />
+                <TextBlock Classes="hint" Text="Changes the size of WindowSnapper's interface, not captured images." Margin="0,3,12,0" />
+              </StackPanel>
+              <Border Grid.Column="1" Classes="value-pill" VerticalAlignment="Center">
+                <TextBlock x:Name="InterfaceScaleValueText" Foreground="#F4B7BD" FontSize="10" FontWeight="SemiBold" />
+              </Border>
+            </Grid>
+            <Slider x:Name="InterfaceScaleSlider" Grid.Row="1" Margin="4,8,4,0" Minimum="0.8" Maximum="1.25" Value="1" SmallChange="0.05" LargeChange="0.1" ValueChanged="InterfaceScaleSlider_ValueChanged" />
+            <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Classes="hint" Text="80%" />
+              <TextBlock Grid.Column="2" Classes="hint" Text="125%" />
+            </Grid>
+          </Grid>
+
+          <!-- CAPTURE PROCESSING -->
+          <Grid ColumnDefinitions="Auto,12,*" Margin="0,18,0,0">
+            <TextBlock Classes="section-title" Text="Capture processing" VerticalAlignment="Center" />
+            <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid Margin="0,11,0,0" ColumnDefinitions="*,Auto">
+            <StackPanel Margin="0,0,16,0">
+              <TextBlock Classes="sub-title" Text="Normalize HDR captures" />
+              <TextBlock Classes="hint" Text="Tone maps HDR/scRGB captures to SDR so saved images look normal on standard displays." Margin="0,3,0,0" />
+            </StackPanel>
+            <ToggleSwitch x:Name="HdrNormalizeToggle" Grid.Column="1" OnContent="On" OffContent="Off" Click="HdrNormalizeToggle_Click" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid Margin="0,11,0,0" ColumnDefinitions="*,Auto">
+            <StackPanel Margin="0,0,16,0">
+              <TextBlock Classes="sub-title" Text="Capture cursor" />
+              <TextBlock Classes="hint" Text="Includes the mouse pointer in screenshots when the selected capture method supports it." Margin="0,3,0,0" />
+            </StackPanel>
+            <ToggleSwitch x:Name="CaptureCursorToggle" Grid.Column="1" OnContent="On" OffContent="Off" Click="CaptureCursorToggle_Click" VerticalAlignment="Center" />
+          </Grid>
+
+          <!-- TOAST -->
+          <Grid ColumnDefinitions="Auto,12,*" Margin="0,18,0,0">
+            <TextBlock Classes="section-title" Text="Notification toast" VerticalAlignment="Center" />
+            <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid Margin="0,12,0,0" ColumnDefinitions="*,16,*">
+            <StackPanel>
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="label" Text="Toast size" VerticalAlignment="Center" />
+                <Border Grid.Column="1" Classes="value-pill">
+                  <TextBlock x:Name="ToastScaleValueText" Foreground="#F4B7BD" FontSize="10" FontWeight="SemiBold" />
+                </Border>
+              </Grid>
+              <Slider x:Name="ToastScaleSlider" Margin="4,7,4,0" Minimum="0.8" Maximum="2.0" Value="1" SmallChange="0.05" LargeChange="0.1" ValueChanged="ToastScaleSlider_ValueChanged" />
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Classes="hint" Text="80%" />
+                <TextBlock Grid.Column="2" Classes="hint" Text="200%" />
+              </Grid>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="label" Text="Time on screen" VerticalAlignment="Center" />
+                <Border Grid.Column="1" Classes="value-pill">
+                  <TextBlock x:Name="ToastDurationValueText" Foreground="#F4B7BD" FontSize="10" FontWeight="SemiBold" />
+                </Border>
+              </Grid>
+              <Slider x:Name="ToastDurationSlider" Margin="4,7,4,0" Minimum="2" Maximum="15" Value="6" SmallChange="0.5" LargeChange="1" ValueChanged="ToastDurationSlider_ValueChanged" />
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Classes="hint" Text="2 sec" />
+                <TextBlock Grid.Column="2" Classes="hint" Text="15 sec" />
+              </Grid>
+            </StackPanel>
+          </Grid>
+
+          <Button Content="Test notification" Margin="0,10,0,0" HorizontalAlignment="Left" Click="TestNotification_Click" />
+
+          <!-- SOUND -->
+          <Grid ColumnDefinitions="Auto,12,*" Margin="0,18,0,0">
+            <TextBlock Classes="section-title" Text="Notification sound" VerticalAlignment="Center" />
+            <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid Margin="0,11,0,0" RowDefinitions="Auto,Auto,Auto">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="hint" Text="Used by both screenshot-count and timed reminder notifications." VerticalAlignment="Center" />
+              <ToggleSwitch x:Name="SoundToggle" Grid.Column="1" OnContent="Sound on" OffContent="Muted" Click="SoundToggle_Click" />
+            </Grid>
+
+            <Grid Grid.Row="1" Margin="0,9,0,0" ColumnDefinitions="*,8,78,8,68,8,82">
+              <Border Classes="field-display" Padding="9,6">
+                <TextBlock x:Name="SoundPathText" Classes="hint" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              </Border>
+              <Button Grid.Column="2" Content="Choose…" Click="ChooseSound_Click" />
+              <Button Grid.Column="4" Content="Default" Click="DefaultSound_Click" />
+              <Button x:Name="TestSoundButton" Grid.Column="6" Content="Test sound" Click="TestSound_Click" />
+            </Grid>
+
+            <Grid Grid.Row="2" Margin="0,10,0,0" RowDefinitions="Auto,Auto,Auto">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="label" Text="Notification volume" VerticalAlignment="Center" />
+                <Border Grid.Column="1" Classes="value-pill">
+                  <TextBlock x:Name="NotificationVolumeValueText" Foreground="#F4B7BD" FontSize="10" FontWeight="SemiBold" />
+                </Border>
+              </Grid>
+              <Slider x:Name="NotificationVolumeSlider" Grid.Row="1" Margin="4,7,4,0" Minimum="0" Maximum="100" Value="75" SmallChange="5" LargeChange="10" ValueChanged="NotificationVolumeSlider_ValueChanged" />
+              <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Classes="hint" Text="0%" />
+                <TextBlock Grid.Column="2" Classes="hint" Text="100%" />
+              </Grid>
+            </Grid>
+          </Grid>
+
+          <!-- CLIPBOARD -->
+          <Grid ColumnDefinitions="Auto,12,*" Margin="0,18,0,0">
+            <TextBlock Classes="section-title" Text="Clipboard" VerticalAlignment="Center" />
+            <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+          </Grid>
+
+          <Grid Margin="0,11,0,4" ColumnDefinitions="*,Auto">
+            <StackPanel Margin="0,0,16,0">
+              <TextBlock Classes="sub-title" Text="Copy latest capture" />
+              <TextBlock Classes="hint" Text="Copies each successfully saved screenshot as an image to the system clipboard." Margin="0,3,0,0" />
+            </StackPanel>
+            <ToggleSwitch x:Name="ClipboardToggle" Grid.Column="1" OnContent="On" OffContent="Off" Click="ClipboardToggle_Click" VerticalAlignment="Center" />
+          </Grid>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Border Grid.Row="2" BorderBrush="#292E36" BorderThickness="0,1,0,0">
+        <Grid Margin="20,10" ColumnDefinitions="*,Auto">
+          <TextBlock x:Name="SettingsStatusText" Text="Changes save automatically" Classes="hint" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Classes="primary" Content="Done" MinWidth="86" Click="Close_Click" />
+        </Grid>
+      </Border>
+    </Grid>
+  </Border>
+</Window>

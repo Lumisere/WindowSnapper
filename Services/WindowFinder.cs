@@ -1,115 +1,92 @@
-using System.Diagnostics;
-using System.Globalization;
-using System.IO;
-using System.Text;
 using WindowSnapper.Models;
+#if WINDOWS
+using WindowSnapper.Platforms.Windows;
+#else
+using WindowSnapper.Platforms.Linux;
+#endif
 
 namespace WindowSnapper.Services;
 
-public sealed record WindowInfo(IntPtr Handle, string Title, string ProcessName, int ProcessId)
-{
-    public string Display => $"{Title}  —  {ProcessName}.exe  [0x{Handle.ToInt64():X}]";
-}
-
 public static class WindowFinder
 {
-    public static List<WindowInfo> GetOpenWindows()
+    public static IReadOnlyList<WindowInfo> GetOpenWindows()
     {
-        var windows = new List<WindowInfo>();
-
-        NativeMethods.EnumWindows((hwnd, _) =>
-        {
-            if (!NativeMethods.IsWindowVisible(hwnd))
-                return true;
-
-            var length = NativeMethods.GetWindowTextLength(hwnd);
-            if (length == 0)
-                return true;
-
-            var buffer = new StringBuilder(length + 1);
-            NativeMethods.GetWindowText(hwnd, buffer, buffer.Capacity);
-            var title = buffer.ToString().Trim();
-            if (title.Length == 0)
-                return true;
-
-            NativeMethods.GetWindowThreadProcessId(hwnd, out var processId);
-            try
-            {
-                using var process = Process.GetProcessById((int)processId);
-                windows.Add(new WindowInfo(hwnd, title, process.ProcessName, (int)processId));
-            }
-            catch (Exception)
-            {
-                // Windows can disappear between EnumWindows and GetProcessById.
-            }
-
-            return true;
-        }, IntPtr.Zero);
-
-        return windows
-            .OrderBy(window => window.ProcessName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(window => window.Title, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+#if WINDOWS
+        return WindowsWindowFinder.GetOpenWindows();
+#else
+        return PlatformInfo.HasX11
+            ? LinuxX11WindowFinder.GetOpenWindows()
+            : Array.Empty<WindowInfo>();
+#endif
     }
 
-    public static IntPtr Resolve(TargetMode mode, string value)
+    public static WindowInfo? Resolve(TargetMode mode, string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return IntPtr.Zero;
+            return null;
 
+        var windows = GetOpenWindows();
         return mode switch
         {
-            TargetMode.ProcessExe => ResolveByProcess(value),
-            TargetMode.WindowTitle => ResolveByTitle(value),
-            TargetMode.WindowHandle => ResolveByHandle(value),
-            _ => IntPtr.Zero
+            TargetMode.ProcessExe => windows.FirstOrDefault(w =>
+                string.Equals(NormalizeExe(w.ProcessName), NormalizeExe(value), StringComparison.OrdinalIgnoreCase)),
+            TargetMode.WindowTitle => windows.FirstOrDefault(w =>
+                w.Title.Contains(value.Trim(), StringComparison.OrdinalIgnoreCase)),
+            TargetMode.WindowHandle => ResolveHandle(windows, value),
+            _ => null
         };
     }
 
-    private static IntPtr ResolveByProcess(string value)
+
+    public static WindowInfo? ResolveNativeId(string value)
     {
-        var processName = Path.GetFileNameWithoutExtension(value.Trim());
-        return FindLargestWindow(window =>
-            string.Equals(window.ProcessName, processName, StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var wanted = NormalizeNativeId(value);
+        return GetOpenWindows().FirstOrDefault(w =>
+            w.HasNativeId && string.Equals(NormalizeNativeId(w.NativeId), wanted, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static IntPtr ResolveByTitle(string value)
+    public static bool TryParseHandle(string value, out nint handle)
     {
         var text = value.Trim();
-        return FindLargestWindow(window => window.Title.Contains(text, StringComparison.OrdinalIgnoreCase));
+        var hex = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+        if (hex)
+            text = text[2..];
+
+        var style = hex ? System.Globalization.NumberStyles.HexNumber : System.Globalization.NumberStyles.Integer;
+        if (long.TryParse(text, style, System.Globalization.CultureInfo.InvariantCulture, out var parsed) && parsed != 0)
+        {
+            handle = (nint)parsed;
+            return true;
+        }
+
+        handle = 0;
+        return false;
     }
 
-    private static IntPtr FindLargestWindow(Func<WindowInfo, bool> predicate)
-    {
-        var match = GetOpenWindows()
-            .Where(predicate)
-            .OrderByDescending(window => WindowArea(window.Handle))
-            .FirstOrDefault();
-
-        return match?.Handle ?? IntPtr.Zero;
-    }
-
-    private static IntPtr ResolveByHandle(string value)
+    private static WindowInfo? ResolveHandle(IReadOnlyList<WindowInfo> windows, string value)
     {
         var text = value.Trim();
-        long handleValue;
+        var native = windows.FirstOrDefault(w =>
+            w.HasNativeId && string.Equals(NormalizeNativeId(w.NativeId), NormalizeNativeId(text), StringComparison.OrdinalIgnoreCase));
+        if (native is not null)
+            return native;
 
-        var parsed = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-            ? long.TryParse(text[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out handleValue)
-            : long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out handleValue);
+        if (!TryParseHandle(text, out var handle))
+            return null;
 
-        if (!parsed)
-            return IntPtr.Zero;
-
-        var hwnd = new IntPtr(handleValue);
-        return NativeMethods.IsWindow(hwnd) ? hwnd : IntPtr.Zero;
+        return windows.FirstOrDefault(w => w.Handle == handle) ?? new WindowInfo(handle, string.Empty, string.Empty, 0);
     }
 
-    private static long WindowArea(IntPtr hwnd)
-    {
-        if (!NativeMethods.GetWindowRect(hwnd, out var rect))
-            return 0;
 
-        return Math.Max(0, (long)rect.Width * rect.Height);
+
+    private static string NormalizeNativeId(string value) => value.Trim().Trim('{', '}');
+
+    private static string NormalizeExe(string value)
+    {
+        var name = Path.GetFileName(value.Trim());
+        return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? name[..^4] : name;
     }
 }

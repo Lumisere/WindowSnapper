@@ -1,0 +1,37 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish Windows
+        shell: pwsh
+        run: ./build-release.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WindowSnapper-win-x64
+          path: publish/WindowSnapper-win-x64.zip
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish Linux
+        run: ./build-release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WindowSnapper-linux-x64
+          path: publish/WindowSnapper-linux-x64.zip

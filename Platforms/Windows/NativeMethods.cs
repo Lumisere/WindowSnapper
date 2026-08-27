@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace WindowSnapper.Services;
+namespace WindowSnapper.Platforms.Windows;
 
 internal static class NativeMethods
 {

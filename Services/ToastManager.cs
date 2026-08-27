@@ -1,77 +1,78 @@
-using System.IO;
-using System.Windows;
+using Avalonia.Threading;
 
 namespace WindowSnapper.Services;
 
 public static class ToastManager
 {
-    private static ToastWindow? _toast;
+    private static readonly object StateLock = new();
+    private static ToastWindow? _current;
+
+    public static void ShowCaptureSaved(string? filePath, double scale, double durationSeconds)
+    {
+        var file = string.IsNullOrWhiteSpace(filePath) ? "Screenshot saved" : Path.GetFileName(filePath);
+        Show("Screenshot saved", file, scale, durationSeconds);
+    }
+
+    public static void ShowReminder(double scale, double durationSeconds, TimeSpan elapsed)
+    {
+        var totalHours = (int)Math.Floor(elapsed.TotalHours);
+        var runtime = $"{totalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
+        Show("Capture reminder", $"Current capture session has been running for {runtime}", scale, durationSeconds);
+    }
+
+    public static void ShowTest(double scale, double durationSeconds) =>
+        Show("Test notification", "WindowSnapper notifications are ready", scale, durationSeconds);
 
     public static void HideCurrent()
     {
-        OnUiThread(() =>
+        if (Dispatcher.UIThread.CheckAccess())
         {
-            if (_toast is null)
-                return;
+            CloseCurrent();
+            return;
+        }
 
-            var toast = _toast;
-            _toast = null;
-
-            if (toast.IsLoaded)
-                toast.DismissImmediately();
-            else
-                toast.Close();
-        });
+        Dispatcher.UIThread.Post(CloseCurrent);
     }
 
-    public static void ShowCaptureSaved(string? filePath, double scale)
+    private static void CloseCurrent()
     {
-        var message = string.IsNullOrWhiteSpace(filePath)
-            ? "Screenshot saved"
-            : Path.GetFileName(filePath);
-
-        Show("Screenshot saved", message, scale);
-    }
-    
-    public static void ShowReminder(double scale, TimeSpan elapsed)
-    {
-        var totalHours = (long)elapsed.TotalHours;
-        var runtime = $"{totalHours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
-        Show("Capture reminder", $"Current capture session has been running for {runtime}", scale);
-    }
-
-    public static void ShowTest(double scale)
-    {
-        var percent = Math.Round(Math.Clamp(scale, 0.8, 2.0) * 100);
-        Show("Toast preview", $"Notification size · {percent:0}%", scale);
-    }
-
-    private static void Show(string title, string message, double scale)
-    {
-        OnUiThread(() =>
+        ToastWindow? toast;
+        lock (StateLock)
         {
-            HideCurrent();
+            toast = _current;
+            _current = null;
+        }
 
-            var toast = new ToastWindow(title, message, scale);
-            _toast = toast;
+        toast?.Close();
+    }
+
+    private static void Show(string title, string message, double scale, double durationSeconds)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            ToastWindow? previous;
+            lock (StateLock)
+            {
+                previous = _current;
+                _current = null;
+            }
+            previous?.Close();
+
+            var toast = new ToastWindow(title, message, scale, durationSeconds);
             toast.Closed += (_, _) =>
             {
-                if (ReferenceEquals(_toast, toast))
-                    _toast = null;
+                lock (StateLock)
+                {
+                    if (ReferenceEquals(_current, toast))
+                        _current = null;
+                }
             };
+
+            lock (StateLock)
+                _current = toast;
+
             toast.Show();
+            toast.StartAutoClose();
         });
-    }
-
-    private static void OnUiThread(Action action)
-    {
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null)
-            return;
-
-        if (dispatcher.CheckAccess())
-            action();
-        else
-            dispatcher.Invoke(action);
     }
 }

@@ -7,11 +7,11 @@ using Windows.Graphics.DirectX;
 using D3D11Device = SharpDX.Direct3D11.Device;
 using DrawingPixelFormat = System.Drawing.Imaging.PixelFormat;
 
-namespace WindowSnapper.Services;
+namespace WindowSnapper.Platforms.Windows;
 
 internal static class CaptureMethods
 {
-    public static async Task<BitmapCapture> WindowsGraphicsAsync(IntPtr hwnd)
+    public static async Task<BitmapCapture> WindowsGraphicsAsync(IntPtr hwnd, bool normalizeHdr, bool captureCursor)
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 18362))
             return new BitmapCapture(null, "requires Windows 10 version 1903 or newer");
@@ -37,12 +37,18 @@ internal static class CaptureMethods
             if (size.Width <= 0 || size.Height <= 0)
                 return new BitmapCapture(null, "target has no capturable size");
 
+            var frameFormat = normalizeHdr
+                ? DirectXPixelFormat.R16G16B16A16Float
+                : DirectXPixelFormat.B8G8R8A8UIntNormalized;
+
             using var framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
                 winRtDevice,
-                DirectXPixelFormat.B8G8R8A8UIntNormalized,
+                frameFormat,
                 2,
                 size);
             using var session = framePool.CreateCaptureSession(item);
+            if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 19041))
+                session.IsCursorCaptureEnabled = captureCursor;
 
             var firstFrame = new TaskCompletionSource<BitmapCapture>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
@@ -66,7 +72,7 @@ internal static class CaptureMethods
                         return;
                     }
 
-                    firstFrame.TrySetResult(new BitmapCapture(CopyTexture(device, texture, width, height), string.Empty));
+                    firstFrame.TrySetResult(new BitmapCapture(CopyTexture(device, texture, width, height, normalizeHdr), string.Empty));
                 }
                 catch (Exception ex)
                 {
@@ -94,7 +100,7 @@ internal static class CaptureMethods
         }
     }
 
-    public static BitmapCapture Dxgi(IntPtr hwnd)
+    public static BitmapCapture Dxgi(IntPtr hwnd, bool normalizeHdr)
     {
         if (NativeMethods.IsIconic(hwnd))
             return new BitmapCapture(null, "the target is minimized");
@@ -125,7 +131,7 @@ internal static class CaptureMethods
             if (duplication.NativePointer == IntPtr.Zero)
                 return new BitmapCapture(null, "DXGI output duplication failed");
 
-            return ReadDuplicatedFrame(duplication, device, context, windowRect, outputBounds);
+            return ReadDuplicatedFrame(duplication, device, context, windowRect, outputBounds, normalizeHdr);
         }
         catch (Exception ex)
         {
@@ -181,8 +187,6 @@ internal static class CaptureMethods
         return bitmap;
     }
 
-
-    //much similar to my brain after writing this it checks if the bitmap is mostly black, which can be used to determine if the capture was successful or not
     public static bool LooksBlank(Bitmap bitmap)
     {
         var samples = 0;
@@ -203,7 +207,7 @@ internal static class CaptureMethods
 
         return samples > 0 && darkSamples >= samples * 0.96;
     }
-    // This method finds the output (monitor) that has the largest overlap with the specified window rectangle.
+
     private static bool FindOutput(
         Factory1 factory,
         NativeMethods.RECT windowRect,
@@ -252,13 +256,14 @@ internal static class CaptureMethods
 
         return adapterIndex >= 0 && outputIndex >= 0 && largestOverlap > 0;
     }
-    // This method reads a duplicated frame from the specified output duplication and returns it as a BitmapCapture.
+
     private static BitmapCapture ReadDuplicatedFrame(
         OutputDuplication duplication,
         D3D11Device device,
         DeviceContext context,
         NativeMethods.RECT windowRect,
-        SharpDX.Mathematics.Interop.RawRectangle outputBounds)
+        SharpDX.Mathematics.Interop.RawRectangle outputBounds,
+        bool normalizeHdr)
     {
         SharpDX.DXGI.Resource? desktopResource = null;
         var frameAcquired = false;
@@ -288,7 +293,7 @@ internal static class CaptureMethods
 
             if (source.Width <= 0 || source.Height <= 0)
                 return new BitmapCapture(null, "DXGI returned a zero-sized desktop texture");
-            if (source.Format != Format.B8G8R8A8_UNorm)
+            if (source.Format is not (Format.B8G8R8A8_UNorm or Format.R16G16B16A16_Float))
                 return new BitmapCapture(null, $"DXGI returned unsupported desktop format {source.Format}");
 
             using var staging = CreateStagingTexture(device, source);
@@ -312,7 +317,7 @@ internal static class CaptureMethods
             {
                 var sourceX = left - outputBounds.Left;
                 var sourceY = top - outputBounds.Top;
-                var bitmap = CopyMappedRegion(mapped, sourceX, sourceY, width, height);
+                var bitmap = CopyMappedRegion(mapped, sourceX, sourceY, width, height, source.Format, normalizeHdr);
                 return new BitmapCapture(bitmap, string.Empty);
             }
             finally
@@ -335,7 +340,7 @@ internal static class CaptureMethods
             }
         }
     }
-    // This method creates a staging texture with the same dimensions and format as the source texture, which can be used for CPU read access or smth x3
+
     private static Texture2D CreateStagingTexture(D3D11Device device, Texture2DDescription source)
     {
         var description = new Texture2DDescription
@@ -355,7 +360,7 @@ internal static class CaptureMethods
         return new Texture2D(device, description);
     }
 
-    private static Bitmap CopyTexture(D3D11Device device, Texture2D source, int width, int height)
+    private static Bitmap CopyTexture(D3D11Device device, Texture2D source, int width, int height, bool normalizeHdr)
     {
         if (device.NativePointer == IntPtr.Zero || device.IsDisposed)
             throw new InvalidOperationException("Direct3D device is no longer valid.");
@@ -375,7 +380,7 @@ internal static class CaptureMethods
 
         try
         {
-            return CopyMappedRegion(mapped, 0, 0, width, height);
+            return CopyMappedRegion(mapped, 0, 0, width, height, source.Description.Format, normalizeHdr);
         }
         finally
         {
@@ -383,7 +388,24 @@ internal static class CaptureMethods
         }
     }
 
-    private static Bitmap CopyMappedRegion(SharpDX.DataBox mapped, int sourceX, int sourceY, int width, int height)
+    private static Bitmap CopyMappedRegion(
+        SharpDX.DataBox mapped,
+        int sourceX,
+        int sourceY,
+        int width,
+        int height,
+        Format format,
+        bool normalizeHdr)
+    {
+        return format switch
+        {
+            Format.B8G8R8A8_UNorm => CopyBgra8Region(mapped, sourceX, sourceY, width, height),
+            Format.R16G16B16A16_Float => CopyScRgbRegion(mapped, sourceX, sourceY, width, height, normalizeHdr),
+            _ => throw new NotSupportedException($"Unsupported capture texture format {format}")
+        };
+    }
+
+    private static Bitmap CopyBgra8Region(SharpDX.DataBox mapped, int sourceX, int sourceY, int width, int height)
     {
         var bitmap = new Bitmap(width, height, DrawingPixelFormat.Format32bppArgb);
         var bits = bitmap.LockBits(
@@ -409,6 +431,79 @@ internal static class CaptureMethods
         }
 
         return bitmap;
+    }
+
+    private static Bitmap CopyScRgbRegion(
+        SharpDX.DataBox mapped,
+        int sourceX,
+        int sourceY,
+        int width,
+        int height,
+        bool normalizeHdr)
+    {
+        var sourcePixels = new byte[checked(width * height * 8)];
+        var sourceRowBytes = width * 8;
+        var firstSource = IntPtr.Add(mapped.DataPointer, sourceY * mapped.RowPitch + sourceX * 8);
+
+        for (var y = 0; y < height; y++)
+        {
+            var source = IntPtr.Add(firstSource, y * mapped.RowPitch);
+            System.Runtime.InteropServices.Marshal.Copy(source, sourcePixels, y * sourceRowBytes, sourceRowBytes);
+        }
+
+        var toneMapper = normalizeHdr ? HdrToneMapper.Analyze(sourcePixels, width, height) : null;
+        var outputPixels = new byte[checked(width * height * 4)];
+
+        Parallel.For(0, height, y =>
+        {
+            var sourceRow = y * sourceRowBytes;
+            var outputRow = y * width * 4;
+
+            for (var x = 0; x < width; x++)
+            {
+                var src = sourceRow + x * 8;
+                var r = ReadHalf(sourcePixels, src);
+                var g = ReadHalf(sourcePixels, src + 2);
+                var b = ReadHalf(sourcePixels, src + 4);
+                var a = ReadHalf(sourcePixels, src + 6);
+
+                toneMapper?.Map(ref r, ref g, ref b);
+
+                var dst = outputRow + x * 4;
+                outputPixels[dst] = HdrToneMapper.LinearToSrgbByte(b, x, y, 0);
+                outputPixels[dst + 1] = HdrToneMapper.LinearToSrgbByte(g, x, y, 1);
+                outputPixels[dst + 2] = HdrToneMapper.LinearToSrgbByte(r, x, y, 2);
+                outputPixels[dst + 3] = (byte)Math.Clamp((int)Math.Round(Math.Clamp(a, 0f, 1f) * 255f), 0, 255);
+            }
+        });
+
+        var bitmap = new Bitmap(width, height, DrawingPixelFormat.Format32bppArgb);
+        var bits = bitmap.LockBits(
+            new Rectangle(0, 0, width, height),
+            ImageLockMode.WriteOnly,
+            DrawingPixelFormat.Format32bppArgb);
+
+        try
+        {
+            for (var y = 0; y < height; y++)
+            {
+                var destination = IntPtr.Add(bits.Scan0, y * bits.Stride);
+                System.Runtime.InteropServices.Marshal.Copy(outputPixels, y * width * 4, destination, width * 4);
+            }
+        }
+        finally
+        {
+            bitmap.UnlockBits(bits);
+        }
+
+        return bitmap;
+    }
+
+    private static float ReadHalf(byte[] row, int offset)
+    {
+        var bits = (ushort)(row[offset] | row[offset + 1] << 8);
+        var value = (float)BitConverter.Int16BitsToHalf(unchecked((short)bits));
+        return float.IsFinite(value) ? value : 0f;
     }
 
     private static NativeMethods.RECT GetWindowRect(IntPtr hwnd)

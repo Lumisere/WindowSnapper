@@ -1,8 +1,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 18
-VisualStudioVersion = 18.7.11919.86 stable
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WindowSnapper", "WindowSnapper.csproj", "{57A69D4B-E54B-4A72-97D5-C512A57F19DA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WindowSnapper", "WindowSnapper.csproj", "{8D2DF2A3-0CA7-49DE-80F7-5D9551B64A29}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -10,12 +10,9 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{57A69D4B-E54B-4A72-97D5-C512A57F19DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{57A69D4B-E54B-4A72-97D5-C512A57F19DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{57A69D4B-E54B-4A72-97D5-C512A57F19DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{57A69D4B-E54B-4A72-97D5-C512A57F19DA}.Release|Any CPU.Build.0 = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
+		{8D2DF2A3-0CA7-49DE-80F7-5D9551B64A29}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D2DF2A3-0CA7-49DE-80F7-5D9551B64A29}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D2DF2A3-0CA7-49DE-80F7-5D9551B64A29}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D2DF2A3-0CA7-49DE-80F7-5D9551B64A29}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

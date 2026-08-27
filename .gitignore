@@ -1,6 +1,11 @@
 .vs/
+.idea/
+.vscode/
 bin/
 obj/
+publish/
 *.user
 *.suo
-settings.json
+*.nupkg
+*.snupkg
+.DS_Store

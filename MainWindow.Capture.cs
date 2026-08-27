@@ -1,26 +1,29 @@
-using System.IO;
-using System.Windows;
+using Avalonia.Controls;
+using Avalonia.Input.Platform;
+using Avalonia.Interactivity;
+using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using WindowSnapper.Models;
 using WindowSnapper.Services;
 
 namespace WindowSnapper;
 
-public partial class MainWindow
+public sealed partial class MainWindow
 {
-    private async void CaptureOnceClick(object sender, RoutedEventArgs e)
+    private async void CaptureOnce_Click(object? sender, RoutedEventArgs e)
     {
         var settings = ReadSettings(true, out var error);
         if (error.Length != 0)
         {
-            SetCaptureStatus(error, false, true);
+            SetStatus(error, false, true);
             return;
         }
 
         await SaveSettingsAsync(settings);
-        await CaptureAsync(settings, _isRunning);
+        await CaptureNowAsync(settings, _isRunning);
     }
 
-    private async void StartStopClick(object sender, RoutedEventArgs e)
+    private async void StartStop_Click(object? sender, RoutedEventArgs e)
     {
         if (_isRunning)
         {
@@ -31,7 +34,7 @@ public partial class MainWindow
         var settings = ReadSettings(true, out var error);
         if (error.Length != 0)
         {
-            SetCaptureStatus(error, false, true);
+            SetStatus(error, false, true);
             return;
         }
 
@@ -51,20 +54,16 @@ public partial class MainWindow
         _successfulCaptureCount = 0;
         _sessionTimer.Restart();
         _isRunning = true;
-
         StartStopButton.Content = "Stop capture";
 
-        var notificationText = settings.NotificationMode switch
+        var notification = settings.NotificationMode switch
         {
             NotificationTriggerMode.EveryScreenshots => $"notify every {Math.Max(1, settings.ScreenshotToastEvery)} screenshots",
             NotificationTriggerMode.TimedReminder => $"reminder {settings.NotificationIntervalMinutes:0.##} min",
             _ => "notifications off"
         };
 
-        SetCaptureStatus(
-            $"Active — screenshots {settings.IntervalMinutes:0.##} min · {notificationText}",
-            true);
-
+        SetStatus($"Active — screenshots every {settings.IntervalMinutes:0.##} min — {notification}", true);
         _ = RunCaptureLoopAsync(settings, captureSource);
 
         if (reminderSource is not null)
@@ -79,9 +78,9 @@ public partial class MainWindow
         _reminderCts = null;
         _isRunning = false;
         _sessionTimer.Reset();
-
         StartStopButton.Content = "Start capture";
-        SetCaptureStatus("Idle", false);
+        SetStatus("Idle", false);
+        _ = CaptureService.StopPlatformSessionAsync();
     }
 
     private void RestartReminder(CaptureSettings settings)
@@ -104,7 +103,7 @@ public partial class MainWindow
         {
             while (!source.IsCancellationRequested)
             {
-                await CaptureAsync(settings, true);
+                await CaptureNowAsync(settings, true);
                 await Task.Delay(TimeSpan.FromMinutes(settings.IntervalMinutes), source.Token);
             }
         }
@@ -113,13 +112,12 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            Dispatcher.Invoke(() => StopAfterCaptureError(ex.Message));
+            await Dispatcher.UIThread.InvokeAsync(() => StopAfterCaptureError(ex.Message));
         }
         finally
         {
             if (ReferenceEquals(_captureCts, source))
                 _captureCts = null;
-
             source.Dispose();
         }
     }
@@ -134,27 +132,21 @@ public partial class MainWindow
                 if (source.IsCancellationRequested)
                     break;
 
-                // Don't let a reminder appear in the middle of a desktop-based capture, or dont I dont care but this prevents it
                 await _captureLock.WaitAsync(source.Token);
                 _captureLock.Release();
 
-                if (source.IsCancellationRequested)
+                var current = _settings;
+                if (current.NotificationMode != NotificationTriggerMode.TimedReminder)
                     break;
 
-                var reminderSettings = _settings;
-                if (reminderSettings.NotificationMode != NotificationTriggerMode.TimedReminder)
-                    break;
-
-                var elapsed = _sessionTimer.Elapsed;
-                ToastManager.ShowReminder(reminderSettings.ToastScale, elapsed);
-
-                if (reminderSettings.NotificationSoundEnabled)
+                ToastManager.ShowReminder(current.ToastScale, current.ToastDurationSeconds, _sessionTimer.Elapsed);
+                if (current.NotificationSoundEnabled)
                 {
-                    var playback = NotificationSoundService.Play(reminderSettings.NotificationSoundPath);
+                    var playback = NotificationSoundService.Play(current.NotificationSoundPath, current.NotificationSoundVolume);
                     if (!playback.Success)
                     {
-                        Dispatcher.Invoke(() =>
-                            SetCaptureStatus($"Reminder sound error: {playback.Error}", _isRunning, true));
+                        await Dispatcher.UIThread.InvokeAsync(() =>
+                            SetStatus($"Reminder sound error: {playback.Error}", _isRunning, true));
                     }
                 }
             }
@@ -164,72 +156,69 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            Dispatcher.Invoke(() =>
-                SetCaptureStatus($"Reminder error: {ex.Message}", _isRunning, true));
+            await Dispatcher.UIThread.InvokeAsync(() =>
+                SetStatus($"Reminder error: {ex.Message}", _isRunning, true));
         }
         finally
         {
             if (ReferenceEquals(_reminderCts, source))
                 _reminderCts = null;
-
             source.Dispose();
         }
     }
 
-    private void StopAfterCaptureError(string message)
-    {
-        _reminderCts?.Cancel();
-        _reminderCts = null;
-        _captureCts = null;
-        _isRunning = false;
-        _sessionTimer.Reset();
-        StartStopButton.Content = "Start capture";
-        SetCaptureStatus(message, false, true);
-    }
-
-    private async Task CaptureAsync(CaptureSettings settings, bool keepActiveStatus)
+    private async Task CaptureNowAsync(CaptureSettings settings, bool keepActiveStatus)
     {
         if (!await _captureLock.WaitAsync(0))
         {
-            SetCaptureStatus("A capture is already in progress", keepActiveStatus);
+            SetStatus("A capture is already in progress", keepActiveStatus);
             return;
         }
 
         try
         {
             ToastManager.HideCurrent();
-            SetCaptureStatus("Capturing…", keepActiveStatus);
+            SetStatus("Capturing…", keepActiveStatus);
 
             var result = await CaptureService.CaptureAsync(settings);
             var active = keepActiveStatus && _isRunning;
-
             if (!result.Success)
             {
-                SetCaptureStatus(result.Message, active, true);
+                SetStatus(result.Message, active, true);
                 return;
             }
 
             var captureNumber = Interlocked.Increment(ref _successfulCaptureCount);
-            var fileName = result.FilePath is null
-                ? "Screenshot saved"
-                : $"Saved {Path.GetFileName(result.FilePath)}";
+            var fileName = result.FilePath is null ? "Screenshot saved" : $"Saved {Path.GetFileName(result.FilePath)}";
 
-            SetCaptureStatus(fileName, active);
-
-            var notificationSettings = _settings;
-            var toastEvery = Math.Max(1, notificationSettings.ScreenshotToastEvery);
-            if (notificationSettings.NotificationMode == NotificationTriggerMode.EveryScreenshots
-                && captureNumber % toastEvery == 0)
+            var currentSettings = _settings;
+            if (currentSettings.CopyLatestToClipboard && !string.IsNullOrWhiteSpace(result.FilePath))
             {
-                ToastManager.ShowCaptureSaved(result.FilePath, notificationSettings.ToastScale);
+                var clipboardError = await CopyCaptureToClipboardAsync(result.FilePath);
+                if (clipboardError is not null)
+                    SetStatus($"{fileName} — clipboard error: {clipboardError}", active, true);
+                else
+                    SetStatus($"{fileName} — copied to clipboard", active);
+            }
+            else
+            {
+                SetStatus(fileName, active);
+            }
 
-                if (notificationSettings.NotificationSoundEnabled)
+            var notification = _settings;
+            var every = Math.Max(1, notification.ScreenshotToastEvery);
+            if (notification.NotificationMode == NotificationTriggerMode.EveryScreenshots
+                && captureNumber % every == 0)
+            {
+                ToastManager.ShowCaptureSaved(result.FilePath, notification.ToastScale, notification.ToastDurationSeconds);
+
+                if (notification.NotificationSoundEnabled)
                 {
-                    var playback = NotificationSoundService.Play(notificationSettings.NotificationSoundPath);
+                    var playback = NotificationSoundService.Play(notification.NotificationSoundPath, notification.NotificationSoundVolume);
                     if (!playback.Success)
                     {
-                        SetCaptureStatus(
-                            $"Saved {Path.GetFileName(result.FilePath)} · sound error: {playback.Error}",
+                        SetStatus(
+                            $"{fileName} — sound error: {playback.Error}",
                             active,
                             true);
                     }
@@ -242,14 +231,66 @@ public partial class MainWindow
         }
     }
 
-    private void SetCaptureStatus(string text, bool active, bool error = false)
+    private async Task<string?> CopyCaptureToClipboardAsync(string filePath)
     {
-        if (!Dispatcher.CheckAccess())
+        try
         {
-            Dispatcher.Invoke(() => SetCaptureStatus(text, active, error));
+            var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+            if (clipboard is null)
+                return "clipboard is unavailable";
+
+            using var image = new ImageMagick.MagickImage(filePath);
+            image.Format = ImageMagick.MagickFormat.Png;
+            using var stream = new MemoryStream();
+            image.Write(stream);
+            stream.Position = 0;
+
+            var bitmap = new Bitmap(stream);
+            var previous = _clipboardBitmap;
+            _clipboardBitmap = bitmap;
+
+            try
+            {
+                await clipboard.SetBitmapAsync(bitmap);
+                await clipboard.FlushAsync();
+                previous?.Dispose();
+                return null;
+            }
+            catch
+            {
+                _clipboardBitmap = previous;
+                bitmap.Dispose();
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    private void StopAfterCaptureError(string message)
+    {
+        _reminderCts?.Cancel();
+        _reminderCts = null;
+        _captureCts = null;
+        _isRunning = false;
+        _sessionTimer.Reset();
+        StartStopButton.Content = "Start capture";
+        SetStatus(message, false, true);
+        _ = CaptureService.StopPlatformSessionAsync();
+    }
+
+    private void SetStatus(string text, bool active, bool error = false)
+    {
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => SetStatus(text, active, error));
             return;
         }
 
-        CaptureStatusText.Text = text;
+        StatusText.Text = text;
+        StatusText.Foreground = new Avalonia.Media.SolidColorBrush(
+            Avalonia.Media.Color.Parse(error ? "#E25B65" : active ? "#E8EAED" : "#A8ADB6"));
     }
 }

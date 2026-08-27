@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text.Json;
 using WindowSnapper.Models;
 
@@ -6,43 +5,62 @@ namespace WindowSnapper.Services;
 
 public static class SettingsStore
 {
-    private static readonly string SettingsFolder = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "WindowSnapper");
-
-    private static readonly string SettingsFile = Path.Combine(SettingsFolder, "settings.json");
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-
-    public static void Save(CaptureSettings settings)
+    private static readonly SemaphoreSlim SaveLock = new(1, 1);
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        Directory.CreateDirectory(SettingsFolder);
-        File.WriteAllText(SettingsFile, JsonSerializer.Serialize(settings, JsonOptions));
-    }
+        WriteIndented = true
+    };
 
-    public static async Task SaveAsync(CaptureSettings settings)
+    private static string SettingsPath
     {
-        Directory.CreateDirectory(SettingsFolder);
-        var json = JsonSerializer.Serialize(settings, JsonOptions);
-        await File.WriteAllTextAsync(SettingsFile, json);
+        get
+        {
+            var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(root, "WindowSnapper", "settings.json");
+        }
     }
 
     public static async Task<CaptureSettings> LoadAsync()
     {
-        if (!File.Exists(SettingsFile))
-            return new CaptureSettings();
-
         try
         {
-            var json = await File.ReadAllTextAsync(SettingsFile);
-            return JsonSerializer.Deserialize<CaptureSettings>(json) ?? new CaptureSettings();
+            if (!File.Exists(SettingsPath))
+                return new CaptureSettings();
+
+            await using var stream = File.OpenRead(SettingsPath);
+            var settings = await JsonSerializer.DeserializeAsync<CaptureSettings>(stream, JsonOptions)
+                ?? new CaptureSettings();
+
+            // Backend value 10 belonged to an older Linux capture option that is no longer available.
+            if ((int)settings.Backend == 10)
+                settings.Backend = CaptureBackend.Auto;
+
+            return settings;
         }
-        catch (JsonException)
+        catch
         {
             return new CaptureSettings();
         }
-        catch (IOException)
+    }
+
+    public static async Task SaveAsync(CaptureSettings settings)
+    {
+        await SaveLock.WaitAsync();
+        try
         {
-            return new CaptureSettings();
+            var directory = Path.GetDirectoryName(SettingsPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            var temp = SettingsPath + ".tmp";
+            await using (var stream = File.Create(temp))
+                await JsonSerializer.SerializeAsync(stream, settings, JsonOptions);
+
+            File.Move(temp, SettingsPath, true);
+        }
+        finally
+        {
+            SaveLock.Release();
         }
     }
 }

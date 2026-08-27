@@ -1,0 +1,246 @@
+<Window
+    x:Class="WindowSnapper.MainWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:CompileBindings="False"
+    Title="WindowSnapper"
+    Width="1000"
+    Height="760"
+    MinWidth="760"
+    MinHeight="640"
+    CanResize="True"
+    CanMinimize="True"
+    CanMaximize="True"
+    WindowDecorations="None"
+    ExtendClientAreaToDecorationsHint="True"
+    UseLayoutRounding="True"
+    ShowInTaskbar="True"
+    WindowStartupLocation="CenterScreen"
+    TransparencyLevelHint="Transparent"
+    Background="Transparent">
+
+  <Grid>
+    <LayoutTransformControl x:Name="UiScaleHost">
+      <LayoutTransformControl.LayoutTransform>
+        <ScaleTransform ScaleX="1" ScaleY="1" />
+      </LayoutTransformControl.LayoutTransform>
+
+      <Border
+          Background="#0E1116"
+          BorderBrush="#303640"
+          BorderThickness="1"
+          CornerRadius="20"
+          ClipToBounds="True">
+        <Grid RowDefinitions="42,*,62">
+
+          <!-- Title bar -->
+          <Border
+              Grid.Row="0"
+              Background="#0E1116"
+              BorderBrush="#292E36"
+              BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+              <Border
+                  x:Name="TitleDragArea"
+                  Grid.Column="0"
+                  Background="Transparent"
+                  WindowDecorationProperties.ElementRole="TitleBar">
+                <TextBlock
+                    Text="WindowSnapper | by Lumisere"
+                    Margin="15,0,0,0"
+                    FontSize="12.5"
+                    FontWeight="SemiBold"
+                    VerticalAlignment="Center"
+                    Foreground="#F2F3F5" />
+              </Border>
+
+              <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button
+                    Classes="titlebar settings"
+                    Click="OpenSettings_Click"
+                    Content="⛭  "
+                    WindowDecorationProperties.ElementRole="User"
+                    ToolTip.Tip="Settings" />
+                <Button
+                    x:Name="MinimizeButton"
+                    Classes="titlebar"
+                    Click="MinimizeButton_Click"
+                    WindowDecorationProperties.ElementRole="MinimizeButton"
+                    Content="—" />
+                <Button
+                    x:Name="MaximizeButton"
+                    Classes="titlebar"
+                    Click="MaximizeButton_Click"
+                    WindowDecorationProperties.ElementRole="MaximizeButton"
+                    Content="□" />
+                <Button
+                    x:Name="CloseButton"
+                    Classes="titlebar close"
+                    Click="CloseButton_Click"
+                    WindowDecorationProperties.ElementRole="CloseButton"
+                    Content="×"
+                    FontSize="17" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <Grid Grid.Row="1" Margin="22,16,22,14" RowDefinitions="Auto,Auto,Auto,*">
+
+            <!-- TARGET -->
+            <StackPanel Grid.Row="0">
+              <Grid ColumnDefinitions="Auto,12,*">
+                <TextBlock Classes="section-title" Text="Target" VerticalAlignment="Center" />
+                <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+              </Grid>
+
+              <Grid Margin="0,10,0,0" ColumnDefinitions="380,18,*">
+                <StackPanel>
+                  <TextBlock Classes="label" Text="Find window by" Margin="0,0,0,5" />
+                  <ComboBox x:Name="TargetModeCombo" SelectionChanged="TargetModeCombo_SelectionChanged" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Classes="label" Text="Process / EXE name" Margin="0,0,0,5" />
+                  <TextBox x:Name="TargetValueBox" LostFocus="Settings_LostFocus" />
+                </StackPanel>
+              </Grid>
+
+              <Grid Margin="0,9,0,0" RowDefinitions="Auto,Auto" ColumnDefinitions="*,10,76,8,96">
+                <TextBlock Grid.Row="0" Classes="label" Text="Open window" Margin="0,0,0,5" />
+                <ComboBox
+                    x:Name="OpenWindowCombo"
+                    Grid.Row="1"
+                    Grid.Column="0"
+                    MinWidth="360"
+                    HorizontalAlignment="Stretch"
+                    SelectionChanged="OpenWindowCombo_SelectionChanged" />
+                <Button Grid.Row="1" Grid.Column="2" Content="Refresh" Click="RefreshWindows_Click" />
+                <Button Grid.Row="1" Grid.Column="4" Content="Use window" Click="UseWindow_Click" />
+              </Grid>
+
+              <Border Classes="field-display" Margin="0,7,0,0">
+                <TextBlock x:Name="TargetHelpText" Classes="hint" TextTrimming="CharacterEllipsis" />
+              </Border>
+            </StackPanel>
+
+            <!-- CAPTURE -->
+            <StackPanel Grid.Row="1" Margin="0,17,0,0">
+              <Grid ColumnDefinitions="Auto,12,*">
+                <TextBlock Classes="section-title" Text="Capture" VerticalAlignment="Center" />
+                <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+              </Grid>
+
+              <Grid Margin="0,10,0,0" ColumnDefinitions="140,18,155,18,*">
+                <StackPanel>
+                  <TextBlock Classes="label" Text="Screenshot every (minutes)" Margin="0,0,0,5" />
+                  <TextBox x:Name="IntervalBox" Text="5" LostFocus="Settings_LostFocus" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Classes="label" Text="Image format" Margin="0,0,0,5" />
+                  <ComboBox x:Name="FormatCombo" SelectionChanged="FormatCombo_SelectionChanged" />
+                </StackPanel>
+                <StackPanel Grid.Column="4">
+                  <TextBlock Classes="label" Text="Capture method" Margin="0,0,0,5" />
+                  <ComboBox x:Name="BackendCombo" SelectionChanged="BackendCombo_SelectionChanged" />
+                </StackPanel>
+              </Grid>
+
+              <TextBlock x:Name="BackendHelpText" Classes="hint" Margin="0,8,0,0" />
+              <Border x:Name="WaylandNotice" IsVisible="False" Classes="field-display" Margin="0,7,0,0">
+                <TextBlock Classes="hint" Text="Native Wayland requires permission for window capture. ScreenCast asks you to choose the window once, then scheduled screenshots reuse that stream." />
+              </Border>
+            </StackPanel>
+
+            <!-- OUTPUT -->
+            <StackPanel Grid.Row="2" Margin="0,17,0,0">
+              <Grid ColumnDefinitions="Auto,12,*">
+                <TextBlock Classes="section-title" Text="Output" VerticalAlignment="Center" />
+                <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+              </Grid>
+
+              <Grid Margin="0,10,0,0" ColumnDefinitions="220,18,*,10,84">
+                <StackPanel>
+                  <TextBlock Classes="label" Text="File name prefix" Margin="0,0,0,5" />
+                  <TextBox x:Name="PrefixBox" Text="capture" LostFocus="Settings_LostFocus" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Classes="label" Text="Save screenshots to" Margin="0,0,0,5" />
+                  <TextBox x:Name="OutputFolderBox" LostFocus="Settings_LostFocus" />
+                </StackPanel>
+                <Button Grid.Column="4" Content="Browse…" Click="BrowseFolder_Click" VerticalAlignment="Bottom" />
+              </Grid>
+            </StackPanel>
+
+            <!-- NOTIFICATION -->
+            <StackPanel Grid.Row="3" Margin="0,17,0,0">
+              <Grid ColumnDefinitions="Auto,12,*">
+                <TextBlock Classes="section-title" Text="Notification" VerticalAlignment="Center" />
+                <Border Grid.Column="2" Height="1" Background="#292E36" VerticalAlignment="Center" />
+              </Grid>
+
+              <Grid Margin="0,10,0,8" ColumnDefinitions="*,260">
+                <StackPanel>
+                  <TextBlock Classes="sub-title" Text="Notification mode" />
+                  <TextBlock x:Name="NotificationModeHelpText" Classes="hint" Margin="0,3,14,0" />
+                </StackPanel>
+                <ComboBox x:Name="NotificationModeCombo" Grid.Column="1" SelectionChanged="NotificationModeCombo_SelectionChanged" />
+              </Grid>
+
+              <Border Height="1" Background="#292E36" Margin="0,1,0,10" />
+
+              <Grid x:Name="ScreenshotNotificationPanel" ColumnDefinitions="*,Auto" Margin="0,0,0,0">
+                <StackPanel>
+                  <TextBlock Classes="sub-title" Text="Screenshot trigger" />
+                  <TextBlock Classes="hint" Text="Notify after a set number of successful captures." Margin="0,3,0,0" />
+                  <Grid Margin="0,8,0,0" ColumnDefinitions="145,10,72,8,*">
+                    <TextBlock Classes="label" Text="Notify every" VerticalAlignment="Center" />
+                    <TextBox x:Name="ScreenshotEveryBox" Grid.Column="2" Text="1" LostFocus="NotificationSettings_LostFocus" />
+                    <TextBlock Grid.Column="4" Classes="label" Text="screenshots" VerticalAlignment="Center" />
+                  </Grid>
+                </StackPanel>
+                <Button Grid.Column="1" Content="Test notification" Click="TestNotification_Click" MinWidth="118" VerticalAlignment="Top" />
+              </Grid>
+
+              <Grid x:Name="TimedNotificationPanel" IsVisible="False" ColumnDefinitions="*,Auto" Margin="0,0,0,0">
+                <StackPanel>
+                  <TextBlock Classes="sub-title" Text="Timed reminder" />
+                  <TextBlock Classes="hint" Text="Notify independently from screenshot timing and include the capture-session runtime." Margin="0,3,0,0" />
+                  <Grid Margin="0,8,0,0" ColumnDefinitions="145,10,72,8,*">
+                    <TextBlock Classes="label" Text="Notify every" VerticalAlignment="Center" />
+                    <TextBox x:Name="ReminderIntervalBox" Grid.Column="2" Text="5" LostFocus="NotificationSettings_LostFocus" />
+                    <TextBlock Grid.Column="4" Classes="label" Text="minutes" VerticalAlignment="Center" />
+                  </Grid>
+                </StackPanel>
+                <Button Grid.Column="1" Content="Test notification" Click="TestNotification_Click" MinWidth="118" VerticalAlignment="Top" />
+              </Grid>
+
+              <Grid x:Name="NotificationOffPanel" IsVisible="False" ColumnDefinitions="*,Auto">
+                <TextBlock Classes="hint" Text="Automatic notifications are disabled. Toast and sound preferences are available in Settings." VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Test notification" Click="TestNotification_Click" MinWidth="118" />
+              </Grid>
+            </StackPanel>
+          </Grid>
+
+          <!-- Always-visible action row -->
+          <Border Grid.Row="2" BorderBrush="#292E36" BorderThickness="0,1,0,0" Background="#0E1116">
+            <Grid Margin="20,10" ColumnDefinitions="*,Auto,8,Auto,8,Auto">
+              <TextBlock x:Name="StatusText" Text="Idle" Foreground="#A8ADB6" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+              <Button Grid.Column="1" Content="Open folder" Click="OpenFolder_Click" MinWidth="90" />
+              <Button Grid.Column="3" Content="Capture once" Click="CaptureOnce_Click" MinWidth="96" />
+              <Button x:Name="StartStopButton" Grid.Column="5" Classes="primary" MinWidth="108" Content="Start capture" Click="StartStop_Click" />
+            </Grid>
+          </Border>
+        </Grid>
+      </Border>
+    </LayoutTransformControl>
+
+    <Border Height="7" Margin="10,0" VerticalAlignment="Top" Background="Transparent" ZIndex="100" WindowDecorationProperties.ElementRole="ResizeN" />
+    <Border Height="7" Margin="10,0" VerticalAlignment="Bottom" Background="Transparent" ZIndex="100" WindowDecorationProperties.ElementRole="ResizeS" />
+    <Border Width="7" Margin="0,10" HorizontalAlignment="Left" Background="Transparent" ZIndex="100" WindowDecorationProperties.ElementRole="ResizeW" />
+    <Border Width="7" Margin="0,10" HorizontalAlignment="Right" Background="Transparent" ZIndex="100" WindowDecorationProperties.ElementRole="ResizeE" />
+
+    <Border Width="11" Height="11" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" ZIndex="101" WindowDecorationProperties.ElementRole="ResizeNW" />
+    <Border Width="11" Height="11" HorizontalAlignment="Right" VerticalAlignment="Top" Background="Transparent" ZIndex="101" WindowDecorationProperties.ElementRole="ResizeNE" />
+    <Border Width="11" Height="11" HorizontalAlignment="Left" VerticalAlignment="Bottom" Background="Transparent" ZIndex="101" WindowDecorationProperties.ElementRole="ResizeSW" />
+    <Border Width="11" Height="11" HorizontalAlignment="Right" VerticalAlignment="Bottom" Background="Transparent" ZIndex="101" WindowDecorationProperties.ElementRole="ResizeSE" />
+  </Grid>
+</Window>

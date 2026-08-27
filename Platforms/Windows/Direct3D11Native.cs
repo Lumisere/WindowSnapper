@@ -1,11 +1,11 @@
 using System.Runtime.InteropServices;
 using SharpDX.Direct3D11;
 
-namespace WindowSnapper.Services;
+namespace WindowSnapper.Platforms.Windows;
 
 internal static class Direct3D11Native
 {
-    // SharpDX's UnmapSubresource wrapper can throw during cleanup on some drivers or so the people on the big interwebz told me, so we will call the native method directly to avoid that.
+    // Bypass SharpDX here; its unmap wrapper is unreliable on a few drivers.
     private const int UnmapVtableSlot = 15;
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
