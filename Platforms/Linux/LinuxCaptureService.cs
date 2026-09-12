@@ -409,7 +409,7 @@ internal static class LinuxCaptureService
             return ToolFailed(method, command);
 
         var data = await File.ReadAllBytesAsync(imagePath);
-        return ImageOutputService.Save(data, settings, method);
+        return await ImageOutputService.SaveAsync(data, settings, method);
     }
 
     private static CaptureResult ToolFailed(string tool, CommandResult command)

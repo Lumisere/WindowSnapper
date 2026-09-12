@@ -40,7 +40,7 @@ internal static class WaylandScreenCastSession
                     return new CaptureResult(false, "Wayland stream returned an invalid capture response");
 
                 var bytes = await File.ReadAllBytesAsync(temp);
-                return ImageOutputService.Save(bytes, settings, "Wayland ScreenCast / PipeWire");
+                return await ImageOutputService.SaveAsync(bytes, settings, "Wayland ScreenCast / PipeWire");
             }
             finally
             {

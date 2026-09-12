@@ -114,9 +114,13 @@
       <Setter Property="FontSize" Value="13" />
     </Style>
     <Style Selector="Button.titlebar.settings">
-      <Setter Property="Width" Value="46" />
-      <Setter Property="FontSize" Value="14" />
-      <Setter Property="Foreground" Value="#AEB4BE" />
+      <Setter Property="Width" Value="52" />
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="Foreground" Value="#D8DCE2" />
+    </Style>
+    <Style Selector="Button.titlebar.hamburger">
+      <Setter Property="Width" Value="48" />
+      <Setter Property="Foreground" Value="#C8CDD5" />
     </Style>
     <Style Selector="Button.titlebar:pointerover">
       <Setter Property="Background" Value="#22262D" />
@@ -163,6 +167,132 @@
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="CornerRadius" Value="6" />
       <Setter Property="Padding" Value="9,7" />
+    </Style>
+
+    <Style Selector="Button.settings-nav">
+      <Setter Property="Height" Value="38" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Padding" Value="22,0,12,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0,1" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="Foreground" Value="#9DA5B0" />
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" />
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+          <BrushTransition Property="Foreground" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.settings-nav:pointerover">
+      <Setter Property="Background" Value="#151A21" />
+      <Setter Property="BorderBrush" Value="#262D36" />
+      <Setter Property="Foreground" Value="#F1F3F5" />
+    </Style>
+    <Style Selector="Button.settings-nav.selected">
+      <Setter Property="Background" Value="#26161A" />
+      <Setter Property="BorderBrush" Value="#5A2A31" />
+      <Setter Property="Foreground" Value="#F1BCC1" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="ScrollViewer.settings-page">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.14" />
+        </Transitions>
+      </Setter>
+    </Style>
+
+    <Style Selector="TextBlock.settings-page-title">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#F4F5F7" />
+    </Style>
+
+    <Style Selector="Border.settings-card">
+      <Setter Property="Background" Value="#11151B" />
+      <Setter Property="BorderBrush" Value="#292F38" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="17" />
+    </Style>
+
+    <Style Selector="Border.settings-subcard">
+      <Setter Property="Background" Value="#0D1015" />
+      <Setter Property="BorderBrush" Value="#252B33" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="9" />
+      <Setter Property="Padding" Value="13" />
+    </Style>
+
+    <Style Selector="Border.settings-divider">
+      <Setter Property="Height" Value="1" />
+      <Setter Property="Background" Value="#262C34" />
+    </Style>
+
+    <Style Selector="TextBlock.card-title">
+      <Setter Property="FontSize" Value="13.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#F3F4F6" />
+    </Style>
+
+    <Style Selector="TextBlock.card-description">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="#777F8B" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- Tiny scrollbar. Somehow this was a boss fight. -->
+    <Style Selector="ScrollViewer.settings-scroll /template/ ScrollBar#PART_VerticalScrollBar">
+      <Setter Property="Width" Value="10" />
+      <Setter Property="MinWidth" Value="10" />
+      <Setter Property="MaxWidth" Value="10" />
+      <Setter Property="Margin" Value="0,0,4,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="ScrollViewer.settings-scroll /template/ ScrollBar#PART_VerticalScrollBar /template/ Rectangle#TrackRect">
+      <Setter Property="Fill" Value="#151920" />
+      <Setter Property="Stroke" Value="#242A33" />
+      <Setter Property="StrokeThickness" Value="1" />
+      <Setter Property="RadiusX" Value="4" />
+      <Setter Property="RadiusY" Value="4" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="ScrollViewer.settings-scroll /template/ ScrollBar#PART_VerticalScrollBar /template/ RepeatButton">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="ScrollViewer.settings-scroll /template/ ScrollBar#PART_VerticalScrollBar /template/ RepeatButton#PART_LineUpButton">
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="Height" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style Selector="ScrollViewer.settings-scroll /template/ ScrollBar#PART_VerticalScrollBar /template/ RepeatButton#PART_LineDownButton">
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="Height" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style Selector="ScrollViewer.settings-scroll /template/ ScrollBar#PART_VerticalScrollBar /template/ Thumb">
+      <Setter Property="Width" Value="6" />
+      <Setter Property="MinWidth" Value="6" />
+      <Setter Property="MinHeight" Value="38" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="Background" Value="#3B424D" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="RenderTransform" Value="none" />
+    </Style>
+    <Style Selector="ScrollViewer.settings-scroll /template/ ScrollBar#PART_VerticalScrollBar /template/ Thumb:pointerover">
+      <Setter Property="Background" Value="#555E6B" />
+    </Style>
+    <Style Selector="ScrollViewer.settings-scroll /template/ ScrollBar#PART_VerticalScrollBar /template/ Thumb:pressed">
+      <Setter Property="Background" Value="#D33341" />
     </Style>
   </Application.Styles>
 </Application>

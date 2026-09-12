@@ -7,7 +7,12 @@ using WindowSnapper.Platforms.Linux;
 
 namespace WindowSnapper.Services;
 
-public sealed record CaptureResult(bool Success, string Message, string? FilePath = null);
+public sealed record CaptureResult(
+    bool Success,
+    string Message,
+    string? FilePath = null,
+    string? CaptureId = null,
+    DateTimeOffset? CapturedAt = null);
 
 public static class CaptureService
 {

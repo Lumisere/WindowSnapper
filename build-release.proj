@@ -1,0 +1,36 @@
+<Project DefaultTargets="Release">
+  <PropertyGroup>
+    <ProjectFile>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', 'WindowSnapper.csproj'))</ProjectFile>
+    <PublishRoot>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', 'publish'))</PublishRoot>
+
+    <WindowsDir>$([System.IO.Path]::Combine('$(PublishRoot)', 'win-x64'))</WindowsDir>
+    <WindowsZip>$([System.IO.Path]::Combine('$(PublishRoot)', 'WindowSnapper-win-x64.zip'))</WindowsZip>
+
+    <LinuxDir>$([System.IO.Path]::Combine('$(PublishRoot)', 'linux-x64'))</LinuxDir>
+    <LinuxZip>$([System.IO.Path]::Combine('$(PublishRoot)', 'WindowSnapper-linux-x64.zip'))</LinuxZip>
+
+    <PublishFlags>-c Release --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false</PublishFlags>
+  </PropertyGroup>
+
+  <Target Name="Release" DependsOnTargets="CleanRelease;PublishWindows;PublishLinux">
+    <Message Importance="high" Text="Done. Both release packages are in $(PublishRoot)" />
+  </Target>
+
+  <Target Name="CleanRelease">
+    <RemoveDir Directories="$(PublishRoot)" />
+    <MakeDir Directories="$(PublishRoot)" />
+  </Target>
+
+  <Target Name="PublishWindows">
+    <Exec Command="dotnet publish &quot;$(ProjectFile)&quot; -f net8.0-windows10.0.19041.0 -r win-x64 $(PublishFlags) -o &quot;$(WindowsDir)&quot;" />
+    <ZipDirectory SourceDirectory="$(WindowsDir)" DestinationFile="$(WindowsZip)" Overwrite="true" />
+    <Message Importance="high" Text="Windows: $(WindowsZip)" />
+  </Target>
+
+  <Target Name="PublishLinux">
+    <Exec Command="dotnet publish &quot;$(ProjectFile)&quot; -f net8.0 -r linux-x64 $(PublishFlags) -o &quot;$(LinuxDir)&quot;" />
+    <Exec Condition="$([System.OperatingSystem]::IsLinux())" Command="chmod +x &quot;$(LinuxDir)/WindowSnapper&quot;" />
+    <ZipDirectory SourceDirectory="$(LinuxDir)" DestinationFile="$(LinuxZip)" Overwrite="true" />
+    <Message Importance="high" Text="Linux: $(LinuxZip)" />
+  </Target>
+</Project>

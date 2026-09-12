@@ -10,7 +10,13 @@ namespace WindowSnapper;
 
 public sealed partial class MainWindow
 {
-    private async void CaptureOnce_Click(object? sender, RoutedEventArgs e)
+    private async void CaptureOnce_Click(object? sender, RoutedEventArgs e) =>
+        await TriggerCaptureOnceAsync();
+
+    private async void StartStop_Click(object? sender, RoutedEventArgs e) =>
+        await ToggleCaptureAsync();
+
+    private async Task TriggerCaptureOnceAsync()
     {
         var settings = ReadSettings(true, out var error);
         if (error.Length != 0)
@@ -23,7 +29,7 @@ public sealed partial class MainWindow
         await CaptureNowAsync(settings, _isRunning);
     }
 
-    private async void StartStop_Click(object? sender, RoutedEventArgs e)
+    private async Task ToggleCaptureAsync()
     {
         if (_isRunning)
         {
@@ -63,7 +69,7 @@ public sealed partial class MainWindow
             _ => "notifications off"
         };
 
-        SetStatus($"Active — screenshots every {settings.IntervalMinutes:0.##} min — {notification}", true);
+        SetStatus($"Active — first screenshot in {settings.IntervalMinutes:0.##} min — then every {settings.IntervalMinutes:0.##} min — {notification}", true);
         _ = RunCaptureLoopAsync(settings, captureSource);
 
         if (reminderSource is not null)
@@ -101,10 +107,13 @@ public sealed partial class MainWindow
     {
         try
         {
-            while (!source.IsCancellationRequested)
+            var interval = TimeSpan.FromMinutes(settings.IntervalMinutes);
+            using var timer = new PeriodicTimer(interval);
+
+            while (!source.IsCancellationRequested
+                   && await timer.WaitForNextTickAsync(source.Token))
             {
                 await CaptureNowAsync(settings, true);
-                await Task.Delay(TimeSpan.FromMinutes(settings.IntervalMinutes), source.Token);
             }
         }
         catch (OperationCanceledException)
@@ -139,7 +148,9 @@ public sealed partial class MainWindow
                 if (current.NotificationMode != NotificationTriggerMode.TimedReminder)
                     break;
 
-                ToastManager.ShowReminder(current.ToastScale, current.ToastDurationSeconds, _sessionTimer.Elapsed);
+                if (!current.ExclusiveFullscreenCompatibility)
+                    ToastManager.ShowReminder(current.ToastScale, current.ToastDurationSeconds, _sessionTimer.Elapsed);
+
                 if (current.NotificationSoundEnabled)
                 {
                     var playback = NotificationSoundService.Play(current.NotificationSoundPath, current.NotificationSoundVolume);
@@ -177,7 +188,10 @@ public sealed partial class MainWindow
 
         try
         {
-            ToastManager.HideCurrent();
+            // Safe mode means "do not touch windows while the game owns the display." Even our own toast counts.
+            if (!settings.ExclusiveFullscreenCompatibility)
+                ToastManager.HideCurrent();
+
             SetStatus("Capturing…", keepActiveStatus);
 
             var result = await CaptureService.CaptureAsync(settings);
@@ -210,7 +224,8 @@ public sealed partial class MainWindow
             if (notification.NotificationMode == NotificationTriggerMode.EveryScreenshots
                 && captureNumber % every == 0)
             {
-                ToastManager.ShowCaptureSaved(result.FilePath, notification.ToastScale, notification.ToastDurationSeconds);
+                if (!notification.ExclusiveFullscreenCompatibility)
+                    ToastManager.ShowCaptureSaved(result.FilePath, notification.ToastScale, notification.ToastDurationSeconds);
 
                 if (notification.NotificationSoundEnabled)
                 {
@@ -239,34 +254,81 @@ public sealed partial class MainWindow
             if (clipboard is null)
                 return "clipboard is unavailable";
 
-            using var image = new ImageMagick.MagickImage(filePath);
-            image.Format = ImageMagick.MagickFormat.Png;
-            using var stream = new MemoryStream();
-            image.Write(stream);
-            stream.Position = 0;
+            // Keep codec fallback in the worker. AVIF can throw a fit here, and Visual Studio will still act surprised.
+            var bitmap = await Task.Run(() => LoadClipboardBitmap(filePath));
 
-            var bitmap = new Bitmap(stream);
             var previous = _clipboardBitmap;
-            _clipboardBitmap = bitmap;
+            Exception? lastError = null;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    await clipboard.SetBitmapAsync(bitmap);
+                    try
+                    {
+                        await clipboard.FlushAsync();
+                    }
+                    catch
+                    {
+                        // The bitmap already made it to the clipboard. If Flush() gets dramatic, don’t punish the screenshot for it.
+                    }
 
-            try
-            {
-                await clipboard.SetBitmapAsync(bitmap);
-                await clipboard.FlushAsync();
-                previous?.Dispose();
-                return null;
+                    _clipboardBitmap = bitmap;
+                    previous?.Dispose();
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    if (attempt < 2)
+                        await Task.Delay(35 * (attempt + 1));
+                }
             }
-            catch
-            {
-                _clipboardBitmap = previous;
-                bitmap.Dispose();
-                throw;
-            }
+
+            bitmap.Dispose();
+            return lastError?.Message ?? "clipboard rejected the image";
         }
         catch (Exception ex)
         {
             return ex.Message;
         }
+    }
+
+    private static Bitmap LoadClipboardBitmap(string filePath)
+    {
+        var extension = Path.GetExtension(filePath);
+        var directDecode = extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+                           || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+                           || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase);
+
+        if (directDecode)
+        {
+            try
+            {
+                // PNG/JPEG is already boring 8-bit sRGB. No reason to pay ImageMagick twice for the same damn job.
+                return new Bitmap(filePath);
+            }
+            catch (ArgumentException)
+            {
+                // Weird pixel layouts still exist because apparently peace was never an option. Fall back to the boring normalized path.
+            }
+            catch (InvalidOperationException)
+            {
+                // Decoder tantrum? Same boring fallback. Consistency is beautiful.
+            }
+        }
+
+        // Clipboards love boring 8-bit sRGB PNG. Normalize the weird stuff in memory and leave the saved file the hell alone.
+        using var image = new ImageMagick.MagickImage(filePath);
+        image.AutoOrient();
+        image.ColorSpace = ImageMagick.ColorSpace.sRGB;
+        image.Depth = 8;
+        image.Format = ImageMagick.MagickFormat.Png;
+        image.Strip();
+
+        var pngBytes = image.ToByteArray();
+        using var stream = new MemoryStream(pngBytes, writable: false);
+        return new Bitmap(stream);
     }
 
     private void StopAfterCaptureError(string message)

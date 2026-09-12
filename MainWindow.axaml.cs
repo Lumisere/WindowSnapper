@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.Platform.Storage;
@@ -30,6 +31,11 @@ public sealed partial class MainWindow : Window
     private CancellationTokenSource? _captureCts;
     private CancellationTokenSource? _reminderCts;
     private SettingsWindow? _settingsWindow;
+    private GlobalHotkeyService? _hotkeys;
+    private bool _hotkeysEnabledApplied;
+    private string _captureHotkeyApplied = string.Empty;
+    private string _toggleHotkeyApplied = string.Empty;
+    private bool _globalHotkeysActive;
     private Avalonia.Media.Imaging.Bitmap? _clipboardBitmap;
     private CaptureSettings _settings = new();
     private bool _isRunning;
@@ -75,8 +81,8 @@ public sealed partial class MainWindow : Window
         UpdateBackendHelp();
         UpdateNotificationUi();
         _loading = false;
+        await UpdateHotkeysAsync();
     }
-
 
     private void FitToWorkingArea()
     {
@@ -110,6 +116,8 @@ public sealed partial class MainWindow : Window
     {
         _captureCts?.Cancel();
         _reminderCts?.Cancel();
+        _hotkeys?.Dispose();
+        _hotkeys = null;
         CaptureService.AbortPlatformSession();
         base.OnClosed(e);
     }
@@ -125,6 +133,8 @@ public sealed partial class MainWindow : Window
         _reminderCts?.Cancel();
         _captureCts = null;
         _reminderCts = null;
+        _hotkeys?.Dispose();
+        _hotkeys = null;
         _sessionTimer.Stop();
         NotificationSoundService.Stop();
         CaptureService.AbortPlatformSession();
@@ -142,7 +152,7 @@ public sealed partial class MainWindow : Window
         }
         catch
         {
-            // Closing the app should never be held up by a settings write.
+            // Closing the app should close the app, not become a hostage negotiation with a settings write.
         }
 
         _clipboardBitmap?.Dispose();
@@ -176,10 +186,9 @@ public sealed partial class MainWindow : Window
         if (PlatformInfo.IsWindows)
         {
             backends.Add(new ComboOption<CaptureBackend>(CaptureBackend.WindowsGraphicsCapture, "Windows Graphics Capture"));
-            backends.Add(new ComboOption<CaptureBackend>(CaptureBackend.DxgiDesktopDuplication, "DXGI Desktop Duplication"));
+            backends.Add(new ComboOption<CaptureBackend>(CaptureBackend.PortableWindow, "Portable window capture"));
             backends.Add(new ComboOption<CaptureBackend>(CaptureBackend.PrintWindow, "PrintWindow"));
             backends.Add(new ComboOption<CaptureBackend>(CaptureBackend.ScreenCopy, "Screen Copy"));
-            backends.Add(new ComboOption<CaptureBackend>(CaptureBackend.PortableWindow, "Portable window capture"));
         }
         else
         {
@@ -302,9 +311,86 @@ public sealed partial class MainWindow : Window
         {
             _settings = updated;
             ApplyUiScale(updated.UiScale, true);
+            if (_hotkeysEnabledApplied != updated.HotkeysEnabled
+                || !string.Equals(_captureHotkeyApplied, updated.CaptureNowHotkey, StringComparison.Ordinal)
+                || !string.Equals(_toggleHotkeyApplied, updated.ToggleCaptureHotkey, StringComparison.Ordinal))
+                _ = UpdateHotkeysAsync();
         };
         settingsWindow.Closed += (_, _) => _settingsWindow = null;
         settingsWindow.Show(this);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (!_settings.HotkeysEnabled || _globalHotkeysActive)
+            return;
+
+        if (HotkeyGesture.TryParse(_settings.CaptureNowHotkey, out var captureGesture, out _)
+            && MatchesFocusedHotkey(captureGesture, e))
+        {
+            e.Handled = true;
+            _ = TriggerCaptureOnceAsync();
+            return;
+        }
+
+        if (HotkeyGesture.TryParse(_settings.ToggleCaptureHotkey, out var toggleGesture, out _)
+            && MatchesFocusedHotkey(toggleGesture, e))
+        {
+            e.Handled = true;
+            _ = ToggleCaptureAsync();
+        }
+    }
+
+    private static bool MatchesFocusedHotkey(HotkeyGesture gesture, KeyEventArgs e)
+    {
+        var modifiers = e.KeyModifiers;
+        return gesture.MatchesAvalonia(
+            e.Key.ToString(),
+            modifiers.HasFlag(KeyModifiers.Control),
+            modifiers.HasFlag(KeyModifiers.Alt),
+            modifiers.HasFlag(KeyModifiers.Shift),
+            modifiers.HasFlag(KeyModifiers.Meta));
+    }
+
+    private async Task UpdateHotkeysAsync()
+    {
+        _hotkeys?.Dispose();
+        _hotkeys = null;
+        _globalHotkeysActive = false;
+        _hotkeysEnabledApplied = _settings.HotkeysEnabled;
+        _captureHotkeyApplied = _settings.CaptureNowHotkey;
+        _toggleHotkeyApplied = _settings.ToggleCaptureHotkey;
+
+        if (!_settings.HotkeysEnabled)
+            return;
+
+        GlobalHotkeyService service;
+        try
+        {
+            service = new GlobalHotkeyService(
+                _settings.CaptureNowHotkey,
+                _settings.ToggleCaptureHotkey,
+                () => _ = TriggerCaptureOnceAsync(),
+                () => _ = ToggleCaptureAsync());
+        }
+        catch (ArgumentException ex)
+        {
+            StatusText.Text = $"Hotkey error: {ex.Message}";
+            return;
+        }
+
+        _hotkeys = service;
+        var active = await service.StartAsync();
+        if (!ReferenceEquals(_hotkeys, service))
+        {
+            service.Dispose();
+            return;
+        }
+
+        _globalHotkeysActive = active;
+        if (!active && !string.IsNullOrWhiteSpace(service.LastError))
+            StatusText.Text = $"Global hotkeys unavailable: {service.LastError}";
     }
 
     private void RefreshWindows_Click(object? sender, RoutedEventArgs e) => RefreshWindowList(false);
@@ -420,17 +506,16 @@ public sealed partial class MainWindow : Window
         var backend = SelectedValue(BackendCombo, CaptureBackend.Auto);
         BackendHelpText.Text = backend switch
         {
-            CaptureBackend.Auto when PlatformInfo.IsWindows => "Recommended. Tries Windows Graphics Capture first, then compatible fallbacks.",
+            CaptureBackend.Auto when PlatformInfo.IsWindows => "Uses Windows Graphics Capture first, then normal fallbacks. Exclusive fullscreen compatibility switches to a passive DXGI-first path for true FSE games.",
             CaptureBackend.Auto when PlatformInfo.IsWayland => PlatformInfo.HasX11
                 ? "Uses X11/XWayland tools for a selected XWayland window; native Wayland windows use a persistent ScreenCast/PipeWire stream."
                 : "Native Wayland capture uses a ScreenCast/PipeWire window stream. You choose the window once when the stream starts.",
             CaptureBackend.Auto => "Tries direct X11 capture first, then ImageMagick and xwd fallbacks when available.",
-            CaptureBackend.WindowsGraphicsCapture => "Modern Windows capture path for most windowed and borderless applications.",
-            CaptureBackend.DxgiDesktopDuplication => "Captures from the desktop output and crops to the target window.",
+            CaptureBackend.WindowsGraphicsCapture => "Preferred Windows path. Captures without activating the target or touching the taskbar.",
             CaptureBackend.PrintWindow => "Traditional Win32 window capture. Useful for normal desktop applications.",
             CaptureBackend.ScreenCopy => "Copies the visible target area from the desktop. The window must be visible.",
             CaptureBackend.PortableWindow when PlatformInfo.IsLinux => "Direct X11/XWayland capture through the built-in capture library.",
-            CaptureBackend.PortableWindow => "Cross-platform window capture backend.",
+            CaptureBackend.PortableWindow => "Cross-platform window capture backend. Exclusive fullscreen compatibility redirects this to passive Windows capture so the game is not activated.",
             CaptureBackend.WaylandPortal => "Opens the desktop screen-share chooser once, then keeps the selected window available through PipeWire for scheduled screenshots.",
             CaptureBackend.LinuxImageMagickX11 => "Captures the selected X11 window by ID with ImageMagick import. The window should be visible.",
             CaptureBackend.LinuxXwdImageMagick => "Uses xwd for the selected X11 window, then ImageMagick to convert the frame.",

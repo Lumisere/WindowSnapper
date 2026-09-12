@@ -7,31 +7,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  windows:
+  release:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - name: Publish Windows
-        shell: pwsh
-        run: ./build-release.ps1
+      - name: Publish Windows and Linux
+        run: dotnet msbuild build-release.proj
       - uses: actions/upload-artifact@v4
         with:
-          name: WindowSnapper-win-x64
-          path: publish/WindowSnapper-win-x64.zip
-
-  linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-      - name: Publish Linux
-        run: ./build-release.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: WindowSnapper-linux-x64
-          path: publish/WindowSnapper-linux-x64.zip
+          name: WindowSnapper-releases
+          path: |
+            publish/WindowSnapper-win-x64.zip
+            publish/WindowSnapper-linux-x64.zip

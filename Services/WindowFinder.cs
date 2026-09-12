@@ -37,7 +37,6 @@ public static class WindowFinder
         };
     }
 
-
     public static WindowInfo? ResolveNativeId(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -79,8 +78,6 @@ public static class WindowFinder
 
         return windows.FirstOrDefault(w => w.Handle == handle) ?? new WindowInfo(handle, string.Empty, string.Empty, 0);
     }
-
-
 
     private static string NormalizeNativeId(string value) => value.Trim().Trim('{', '}');
 

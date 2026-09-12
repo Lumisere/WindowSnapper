@@ -33,7 +33,7 @@
           ClipToBounds="True">
         <Grid RowDefinitions="42,*,62">
 
-          <!-- Title bar -->
+          <!-- Fake title bar. The stock one had all the personality of printer firmware. -->
           <Border
               Grid.Row="0"
               Background="#0E1116"
@@ -58,9 +58,64 @@
                 <Button
                     Classes="titlebar settings"
                     Click="OpenSettings_Click"
-                    Content="⛭  "
                     WindowDecorationProperties.ElementRole="User"
-                    ToolTip.Tip="Settings" />
+                    ToolTip.Tip="Settings">
+                  <Viewbox Width="21" Height="21" Stretch="Uniform">
+                    <Canvas Width="24" Height="24">
+                      <!-- Eight teeth, one center, zero emoji bullshit. -->
+                      <Rectangle Width="3.6" Height="5.4" Canvas.Left="10.20" Canvas.Top="0.70"
+                                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" RenderTransformOrigin="50%,50%">
+                        <Rectangle.RenderTransform>
+                          <RotateTransform Angle="0" />
+                        </Rectangle.RenderTransform>
+                      </Rectangle>
+                      <Rectangle Width="3.6" Height="5.4" Canvas.Left="16.28" Canvas.Top="3.22"
+                                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" RenderTransformOrigin="50%,50%">
+                        <Rectangle.RenderTransform>
+                          <RotateTransform Angle="45" />
+                        </Rectangle.RenderTransform>
+                      </Rectangle>
+                      <Rectangle Width="3.6" Height="5.4" Canvas.Left="18.80" Canvas.Top="9.30"
+                                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" RenderTransformOrigin="50%,50%">
+                        <Rectangle.RenderTransform>
+                          <RotateTransform Angle="90" />
+                        </Rectangle.RenderTransform>
+                      </Rectangle>
+                      <Rectangle Width="3.6" Height="5.4" Canvas.Left="16.28" Canvas.Top="15.38"
+                                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" RenderTransformOrigin="50%,50%">
+                        <Rectangle.RenderTransform>
+                          <RotateTransform Angle="135" />
+                        </Rectangle.RenderTransform>
+                      </Rectangle>
+                      <Rectangle Width="3.6" Height="5.4" Canvas.Left="10.20" Canvas.Top="17.90"
+                                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" RenderTransformOrigin="50%,50%">
+                        <Rectangle.RenderTransform>
+                          <RotateTransform Angle="180" />
+                        </Rectangle.RenderTransform>
+                      </Rectangle>
+                      <Rectangle Width="3.6" Height="5.4" Canvas.Left="4.12" Canvas.Top="15.38"
+                                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" RenderTransformOrigin="50%,50%">
+                        <Rectangle.RenderTransform>
+                          <RotateTransform Angle="225" />
+                        </Rectangle.RenderTransform>
+                      </Rectangle>
+                      <Rectangle Width="3.6" Height="5.4" Canvas.Left="1.60" Canvas.Top="9.30"
+                                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" RenderTransformOrigin="50%,50%">
+                        <Rectangle.RenderTransform>
+                          <RotateTransform Angle="270" />
+                        </Rectangle.RenderTransform>
+                      </Rectangle>
+                      <Rectangle Width="3.6" Height="5.4" Canvas.Left="4.12" Canvas.Top="3.22"
+                                 Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" RenderTransformOrigin="50%,50%">
+                        <Rectangle.RenderTransform>
+                          <RotateTransform Angle="315" />
+                        </Rectangle.RenderTransform>
+                      </Rectangle>
+                      <Ellipse Width="14" Height="14" Canvas.Left="5" Canvas.Top="5"
+                               Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2.4" />
+                    </Canvas>
+                  </Viewbox>
+                </Button>
                 <Button
                     x:Name="MinimizeButton"
                     Classes="titlebar"
@@ -86,7 +141,7 @@
 
           <Grid Grid.Row="1" Margin="22,16,22,14" RowDefinitions="Auto,Auto,Auto,*">
 
-            <!-- TARGET -->
+            <!-- Pick a victim. Preferably a window. -->
             <StackPanel Grid.Row="0">
               <Grid ColumnDefinitions="Auto,12,*">
                 <TextBlock Classes="section-title" Text="Target" VerticalAlignment="Center" />
@@ -122,7 +177,7 @@
               </Border>
             </StackPanel>
 
-            <!-- CAPTURE -->
+            <!-- Capture knobs. The ones people actually care about. -->
             <StackPanel Grid.Row="1" Margin="0,17,0,0">
               <Grid ColumnDefinitions="Auto,12,*">
                 <TextBlock Classes="section-title" Text="Capture" VerticalAlignment="Center" />
@@ -150,7 +205,7 @@
               </Border>
             </StackPanel>
 
-            <!-- OUTPUT -->
+            <!-- Where the screenshots go after surviving all this nonsense. -->
             <StackPanel Grid.Row="2" Margin="0,17,0,0">
               <Grid ColumnDefinitions="Auto,12,*">
                 <TextBlock Classes="section-title" Text="Output" VerticalAlignment="Center" />
@@ -170,7 +225,7 @@
               </Grid>
             </StackPanel>
 
-            <!-- NOTIFICATION -->
+            <!-- Toast cave. Please don’t feed it after midnight. -->
             <StackPanel Grid.Row="3" Margin="0,17,0,0">
               <Grid ColumnDefinitions="Auto,12,*">
                 <TextBlock Classes="section-title" Text="Notification" VerticalAlignment="Center" />
@@ -220,7 +275,7 @@
             </StackPanel>
           </Grid>
 
-          <!-- Always-visible action row -->
+          <!-- Keep the important buttons where humans can find them. Revolutionary stuff. -->
           <Border Grid.Row="2" BorderBrush="#292E36" BorderThickness="0,1,0,0" Background="#0E1116">
             <Grid Margin="20,10" ColumnDefinitions="*,Auto,8,Auto,8,Auto">
               <TextBlock x:Name="StatusText" Text="Idle" Foreground="#A8ADB6" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />

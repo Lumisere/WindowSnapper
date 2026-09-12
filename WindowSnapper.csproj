@@ -9,6 +9,12 @@
     <ApplicationManifest Condition="'$(TargetFramework)' == 'net8.0-windows10.0.19041.0'">app.manifest</ApplicationManifest>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.1" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
@@ -32,6 +38,10 @@
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
     <Content Include="Platforms\Linux\wayland_capture_helper.py">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="Platforms\Linux\global_hotkey_helper.py">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>

@@ -5,7 +5,7 @@ namespace WindowSnapper.Platforms.Windows;
 
 internal static class Direct3D11Native
 {
-    // Bypass SharpDX here; its unmap wrapper is unreliable on a few drivers.
+    // Skip SharpDX here. A few drivers turned its unmap wrapper into a tiny chaos machine.
     private const int UnmapVtableSlot = 15;
 
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]

@@ -34,7 +34,7 @@ internal static class WindowsWindowFinder
             }
             catch
             {
-                // The process may close between enumeration and lookup.
+                // Windows can kill the process between these two calls. Rude, completely legal, and annoyingly normal.
             }
 
             windows.Add(new WindowInfo(hwnd, title, processName, (int)pid));

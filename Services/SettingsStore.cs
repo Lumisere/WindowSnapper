@@ -31,9 +31,20 @@ public static class SettingsStore
             var settings = await JsonSerializer.DeserializeAsync<CaptureSettings>(stream, JsonOptions)
                 ?? new CaptureSettings();
 
-            // Backend value 10 belonged to an older Linux capture option that is no longer available.
-            if ((int)settings.Backend == 10)
+            // Backend IDs 2 and 10 are ghosts. Exorcise them here instead of making users debug the paranormal.
+            if ((int)settings.Backend is 2 or 10)
                 settings.Backend = CaptureBackend.Auto;
+
+            if (!HotkeyGesture.TryParse(settings.CaptureNowHotkey, out var captureGesture, out _))
+                HotkeyGesture.TryParse(GlobalHotkeyService.DefaultCaptureNow, out captureGesture, out _);
+            if (!HotkeyGesture.TryParse(settings.ToggleCaptureHotkey, out var toggleGesture, out _))
+                HotkeyGesture.TryParse(GlobalHotkeyService.DefaultToggleCapture, out toggleGesture, out _);
+            if (captureGesture == toggleGesture)
+                HotkeyGesture.TryParse(GlobalHotkeyService.DefaultToggleCapture, out toggleGesture, out _);
+
+            settings.CaptureNowHotkey = captureGesture.DisplayText;
+            settings.ToggleCaptureHotkey = toggleGesture.DisplayText;
+            CaptureVerificationService.EnsureSecret(settings);
 
             return settings;
         }
@@ -45,6 +56,7 @@ public static class SettingsStore
 
     public static async Task SaveAsync(CaptureSettings settings)
     {
+        CaptureVerificationService.EnsureSecret(settings);
         await SaveLock.WaitAsync();
         try
         {

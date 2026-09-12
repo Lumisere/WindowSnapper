@@ -11,7 +11,6 @@ public enum CaptureBackend
 {
     Auto = 0,
     WindowsGraphicsCapture = 1,
-    DxgiDesktopDuplication = 2,
     PrintWindow = 3,
     ScreenCopy = 4,
     PortableWindow = 5,
@@ -54,6 +53,11 @@ public sealed class CaptureSettings
     public CaptureBackend Backend { get; set; } = CaptureBackend.Auto;
     public ImageFormatChoice ImageFormat { get; set; } = ImageFormatChoice.Png;
     public string FileNamePrefix { get; set; } = "capture";
+    public bool CaptureWatermarkEnabled { get; set; }
+    public string CaptureVerificationSecret { get; set; } = string.Empty;
+    public bool HotkeysEnabled { get; set; } = true;
+    public string CaptureNowHotkey { get; set; } = "Ctrl+Shift+S";
+    public string ToggleCaptureHotkey { get; set; } = "Ctrl+Shift+P";
 
     public double UiScale { get; set; } = 1.0;
 
@@ -68,8 +72,9 @@ public sealed class CaptureSettings
     public bool CopyLatestToClipboard { get; set; }
     public bool NormalizeHdrCaptures { get; set; } = true;
     public bool CaptureCursor { get; set; } = false;
+    public bool ExclusiveFullscreenCompatibility { get; set; } = false;
 
-    // Legacy fields used by older settings files.
+    // Config fossils. Remove them and somebody’s old settings file will choose violence.
     public double ResolutionScale { get; set; } = 1.0;
     public bool ScreenshotToastEnabled { get; set; } = true;
     public bool TimedNotificationEnabled { get; set; }

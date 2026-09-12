@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Drawing;
 using System.Drawing.Imaging;
 using SharpDX.Direct3D11;
@@ -84,7 +85,7 @@ internal static class CaptureMethods
             try
             {
                 session.StartCapture();
-                var completed = await Task.WhenAny(firstFrame.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+                var completed = await Task.WhenAny(firstFrame.Task, Task.Delay(TimeSpan.FromSeconds(1)));
                 return completed == firstFrame.Task
                     ? await firstFrame.Task
                     : new BitmapCapture(null, "timed out waiting for a frame");
@@ -93,45 +94,6 @@ internal static class CaptureMethods
             {
                 framePool.FrameArrived -= OnFrameArrived;
             }
-        }
-        catch (Exception ex)
-        {
-            return new BitmapCapture(null, $"{ex.GetType().Name}: {ex.Message}");
-        }
-    }
-
-    public static BitmapCapture Dxgi(IntPtr hwnd, bool normalizeHdr)
-    {
-        if (NativeMethods.IsIconic(hwnd))
-            return new BitmapCapture(null, "the target is minimized");
-
-        var windowRect = GetWindowRect(hwnd);
-        if (windowRect.Width <= 0 || windowRect.Height <= 0)
-            return new BitmapCapture(null, "target has no visible bounds");
-
-        try
-        {
-            using var factory = new Factory1();
-            if (!FindOutput(factory, windowRect, out var adapterIndex, out var outputIndex, out var outputBounds))
-                return new BitmapCapture(null, "window is not on an active desktop output");
-
-            using var adapter = factory.GetAdapter1(adapterIndex);
-            using var output = adapter.GetOutput(outputIndex);
-            using var output1 = output.QueryInterface<Output1>();
-            using var device = new D3D11Device(adapter, DeviceCreationFlags.BgraSupport);
-
-            if (device.NativePointer == IntPtr.Zero || device.IsDisposed)
-                return new BitmapCapture(null, "DXGI could not create a Direct3D device");
-
-            var context = device.ImmediateContext;
-            if (context is null || context.NativePointer == IntPtr.Zero)
-                return new BitmapCapture(null, "DXGI Direct3D device has no immediate context");
-
-            using var duplication = output1.DuplicateOutput(device);
-            if (duplication.NativePointer == IntPtr.Zero)
-                return new BitmapCapture(null, "DXGI output duplication failed");
-
-            return ReadDuplicatedFrame(duplication, device, context, windowRect, outputBounds, normalizeHdr);
         }
         catch (Exception ex)
         {
@@ -166,7 +128,7 @@ internal static class CaptureMethods
         return null;
     }
 
-    public static Bitmap? ScreenCopy(IntPtr hwnd)
+    public static Bitmap? ScreenCopy(IntPtr hwnd, bool hideTaskbars = true)
     {
         if (NativeMethods.IsIconic(hwnd))
             return null;
@@ -176,15 +138,90 @@ internal static class CaptureMethods
             return null;
 
         var bitmap = new Bitmap(rect.Width, rect.Height, DrawingPixelFormat.Format32bppArgb);
-        using var graphics = Graphics.FromImage(bitmap);
-        graphics.CopyFromScreen(
-            rect.Left,
-            rect.Top,
-            0,
-            0,
-            new Size(rect.Width, rect.Height),
-            CopyPixelOperation.SourceCopy);
-        return bitmap;
+        using var taskbars = hideTaskbars ? HideTaskbarsForCapture() : EmptyGuard.Instance;
+        try
+        {
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.CopyFromScreen(
+                rect.Left,
+                rect.Top,
+                0,
+                0,
+                new Size(rect.Width, rect.Height),
+                CopyPixelOperation.SourceCopy);
+            return bitmap;
+        }
+        catch
+        {
+            bitmap.Dispose();
+            throw;
+        }
+    }
+
+    internal static IDisposable HideTaskbarsForCapture()
+    {
+        var hidden = new List<IntPtr>();
+
+        void HideIfVisible(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindowVisible(hwnd))
+                return;
+
+            NativeMethods.ShowWindow(hwnd, NativeMethods.SW_HIDE);
+            hidden.Add(hwnd);
+        }
+
+        HideIfVisible(NativeMethods.FindWindow("Shell_TrayWnd", null));
+
+        var after = IntPtr.Zero;
+        while (true)
+        {
+            var secondary = NativeMethods.FindWindowEx(IntPtr.Zero, after, "Shell_SecondaryTrayWnd", null);
+            if (secondary == IntPtr.Zero)
+                break;
+
+            HideIfVisible(secondary);
+            after = secondary;
+        }
+
+        if (hidden.Count > 0)
+        {
+            // Explorer can be one frame behind. Give it a moment so it doesn't photobomb the capture anyway.
+            NativeMethods.DwmFlush();
+            Thread.Sleep(70);
+        }
+
+        return new TaskbarCaptureGuard(hidden);
+    }
+
+    private sealed class TaskbarCaptureGuard : IDisposable
+    {
+        private List<IntPtr>? _taskbars;
+
+        public TaskbarCaptureGuard(List<IntPtr> taskbars) => _taskbars = taskbars;
+
+        public void Dispose()
+        {
+            var taskbars = Interlocked.Exchange(ref _taskbars, null);
+            if (taskbars is null)
+                return;
+
+            foreach (var hwnd in taskbars)
+            {
+                if (NativeMethods.IsWindow(hwnd))
+                    NativeMethods.ShowWindow(hwnd, NativeMethods.SW_SHOW);
+            }
+
+            if (taskbars.Count > 0)
+                NativeMethods.DwmFlush();
+        }
+    }
+
+
+    private sealed class EmptyGuard : IDisposable
+    {
+        public static readonly EmptyGuard Instance = new();
+        public void Dispose() { }
     }
 
     public static bool LooksBlank(Bitmap bitmap)
@@ -206,139 +243,6 @@ internal static class CaptureMethods
         }
 
         return samples > 0 && darkSamples >= samples * 0.96;
-    }
-
-    private static bool FindOutput(
-        Factory1 factory,
-        NativeMethods.RECT windowRect,
-        out int adapterIndex,
-        out int outputIndex,
-        out SharpDX.Mathematics.Interop.RawRectangle bounds)
-    {
-        adapterIndex = -1;
-        outputIndex = -1;
-        bounds = default;
-        long largestOverlap = 0;
-
-        var adapters = factory.Adapters1;
-        try
-        {
-            for (var adapterNumber = 0; adapterNumber < adapters.Length; adapterNumber++)
-            {
-                var outputs = adapters[adapterNumber].Outputs;
-                try
-                {
-                    for (var outputNumber = 0; outputNumber < outputs.Length; outputNumber++)
-                    {
-                        var desktopBounds = outputs[outputNumber].Description.DesktopBounds;
-                        var overlap = IntersectionArea(windowRect, desktopBounds);
-                        if (overlap <= largestOverlap)
-                            continue;
-
-                        largestOverlap = overlap;
-                        adapterIndex = adapterNumber;
-                        outputIndex = outputNumber;
-                        bounds = desktopBounds;
-                    }
-                }
-                finally
-                {
-                    foreach (var output in outputs)
-                        output.Dispose();
-                }
-            }
-        }
-        finally
-        {
-            foreach (var adapter in adapters)
-                adapter.Dispose();
-        }
-
-        return adapterIndex >= 0 && outputIndex >= 0 && largestOverlap > 0;
-    }
-
-    private static BitmapCapture ReadDuplicatedFrame(
-        OutputDuplication duplication,
-        D3D11Device device,
-        DeviceContext context,
-        NativeMethods.RECT windowRect,
-        SharpDX.Mathematics.Interop.RawRectangle outputBounds,
-        bool normalizeHdr)
-    {
-        SharpDX.DXGI.Resource? desktopResource = null;
-        var frameAcquired = false;
-
-        try
-        {
-            for (var attempt = 0; attempt < 2 && !frameAcquired; attempt++)
-            {
-                var result = duplication.TryAcquireNextFrame(750, out _, out var frameResource);
-                if (result.Success)
-                {
-                    desktopResource = frameResource;
-                    frameAcquired = desktopResource is not null;
-                    continue;
-                }
-
-                frameResource?.Dispose();
-                if (result.Code != SharpDX.DXGI.ResultCode.WaitTimeout.Result.Code)
-                    return new BitmapCapture(null, $"DXGI frame acquisition failed (0x{result.Code:X8})");
-            }
-
-            if (!frameAcquired || desktopResource is null)
-                return new BitmapCapture(null, "timed out waiting for a desktop frame");
-
-            using var desktopTexture = desktopResource.QueryInterface<Texture2D>();
-            var source = desktopTexture.Description;
-
-            if (source.Width <= 0 || source.Height <= 0)
-                return new BitmapCapture(null, "DXGI returned a zero-sized desktop texture");
-            if (source.Format is not (Format.B8G8R8A8_UNorm or Format.R16G16B16A16_Float))
-                return new BitmapCapture(null, $"DXGI returned unsupported desktop format {source.Format}");
-
-            using var staging = CreateStagingTexture(device, source);
-            context.CopyResource(desktopTexture, staging);
-
-            var left = Math.Max(windowRect.Left, outputBounds.Left);
-            var top = Math.Max(windowRect.Top, outputBounds.Top);
-            var right = Math.Min(windowRect.Right, outputBounds.Right);
-            var bottom = Math.Min(windowRect.Bottom, outputBounds.Bottom);
-            var width = right - left;
-            var height = bottom - top;
-
-            if (width <= 0 || height <= 0)
-                return new BitmapCapture(null, "window is outside the selected desktop output");
-
-            var mapped = context.MapSubresource(staging, 0, MapMode.Read, SharpDX.Direct3D11.MapFlags.None);
-            if (mapped.DataPointer == IntPtr.Zero)
-                return new BitmapCapture(null, "DXGI mapped the desktop texture with a null data pointer");
-
-            try
-            {
-                var sourceX = left - outputBounds.Left;
-                var sourceY = top - outputBounds.Top;
-                var bitmap = CopyMappedRegion(mapped, sourceX, sourceY, width, height, source.Format, normalizeHdr);
-                return new BitmapCapture(bitmap, string.Empty);
-            }
-            finally
-            {
-                Direct3D11Native.Unmap(context, staging, 0);
-            }
-        }
-        finally
-        {
-            desktopResource?.Dispose();
-            if (frameAcquired)
-            {
-                try
-                {
-                    duplication.ReleaseFrame();
-                }
-                catch
-                {
-                }
-            }
-        }
     }
 
     private static Texture2D CreateStagingTexture(D3D11Device device, Texture2DDescription source)
@@ -380,7 +284,12 @@ internal static class CaptureMethods
 
         try
         {
-            return CopyMappedRegion(mapped, 0, 0, width, height, source.Description.Format, normalizeHdr);
+            return CopyMappedFrame(
+                mapped,
+                width,
+                height,
+                source.Description.Format,
+                normalizeHdr);
         }
         finally
         {
@@ -388,10 +297,8 @@ internal static class CaptureMethods
         }
     }
 
-    private static Bitmap CopyMappedRegion(
+    private static Bitmap CopyMappedFrame(
         SharpDX.DataBox mapped,
-        int sourceX,
-        int sourceY,
         int width,
         int height,
         Format format,
@@ -399,13 +306,16 @@ internal static class CaptureMethods
     {
         return format switch
         {
-            Format.B8G8R8A8_UNorm => CopyBgra8Region(mapped, sourceX, sourceY, width, height),
-            Format.R16G16B16A16_Float => CopyScRgbRegion(mapped, sourceX, sourceY, width, height, normalizeHdr),
+            Format.B8G8R8A8_UNorm => CopyBgra8Frame(mapped, width, height),
+            Format.R16G16B16A16_Float => CopyScRgbFrame(mapped, width, height, normalizeHdr),
             _ => throw new NotSupportedException($"Unsupported capture texture format {format}")
         };
     }
 
-    private static Bitmap CopyBgra8Region(SharpDX.DataBox mapped, int sourceX, int sourceY, int width, int height)
+    private static Bitmap CopyBgra8Frame(
+        SharpDX.DataBox mapped,
+        int width,
+        int height)
     {
         var bitmap = new Bitmap(width, height, DrawingPixelFormat.Format32bppArgb);
         var bits = bitmap.LockBits(
@@ -415,7 +325,7 @@ internal static class CaptureMethods
 
         try
         {
-            var source = IntPtr.Add(mapped.DataPointer, sourceY * mapped.RowPitch + sourceX * 4);
+            var source = mapped.DataPointer;
             var destination = bits.Scan0;
 
             for (var y = 0; y < height; y++)
@@ -433,70 +343,87 @@ internal static class CaptureMethods
         return bitmap;
     }
 
-    private static Bitmap CopyScRgbRegion(
+    private static Bitmap CopyScRgbFrame(
         SharpDX.DataBox mapped,
-        int sourceX,
-        int sourceY,
         int width,
         int height,
         bool normalizeHdr)
     {
-        var sourcePixels = new byte[checked(width * height * 8)];
-        var sourceRowBytes = width * 8;
-        var firstSource = IntPtr.Add(mapped.DataPointer, sourceY * mapped.RowPitch + sourceX * 8);
-
-        for (var y = 0; y < height; y++)
-        {
-            var source = IntPtr.Add(firstSource, y * mapped.RowPitch);
-            System.Runtime.InteropServices.Marshal.Copy(source, sourcePixels, y * sourceRowBytes, sourceRowBytes);
-        }
-
-        var toneMapper = normalizeHdr ? HdrToneMapper.Analyze(sourcePixels, width, height) : null;
-        var outputPixels = new byte[checked(width * height * 4)];
-
-        Parallel.For(0, height, y =>
-        {
-            var sourceRow = y * sourceRowBytes;
-            var outputRow = y * width * 4;
-
-            for (var x = 0; x < width; x++)
-            {
-                var src = sourceRow + x * 8;
-                var r = ReadHalf(sourcePixels, src);
-                var g = ReadHalf(sourcePixels, src + 2);
-                var b = ReadHalf(sourcePixels, src + 4);
-                var a = ReadHalf(sourcePixels, src + 6);
-
-                toneMapper?.Map(ref r, ref g, ref b);
-
-                var dst = outputRow + x * 4;
-                outputPixels[dst] = HdrToneMapper.LinearToSrgbByte(b, x, y, 0);
-                outputPixels[dst + 1] = HdrToneMapper.LinearToSrgbByte(g, x, y, 1);
-                outputPixels[dst + 2] = HdrToneMapper.LinearToSrgbByte(r, x, y, 2);
-                outputPixels[dst + 3] = (byte)Math.Clamp((int)Math.Round(Math.Clamp(a, 0f, 1f) * 255f), 0, 255);
-            }
-        });
-
-        var bitmap = new Bitmap(width, height, DrawingPixelFormat.Format32bppArgb);
-        var bits = bitmap.LockBits(
-            new Rectangle(0, 0, width, height),
-            ImageLockMode.WriteOnly,
-            DrawingPixelFormat.Format32bppArgb);
+        var sourceLength = checked(width * height * 8);
+        var outputLength = checked(width * height * 4);
+        var sourcePixels = ArrayPool<byte>.Shared.Rent(sourceLength);
+        var outputPixels = ArrayPool<byte>.Shared.Rent(outputLength);
 
         try
         {
+            var sourceRowBytes = width * 8;
+
             for (var y = 0; y < height; y++)
             {
-                var destination = IntPtr.Add(bits.Scan0, y * bits.Stride);
-                System.Runtime.InteropServices.Marshal.Copy(outputPixels, y * width * 4, destination, width * 4);
+                var source = IntPtr.Add(mapped.DataPointer, y * mapped.RowPitch);
+                System.Runtime.InteropServices.Marshal.Copy(source, sourcePixels, y * sourceRowBytes, sourceRowBytes);
+            }
+
+            var toneMapper = normalizeHdr ? HdrToneMapper.Analyze(sourcePixels, width, height) : null;
+
+            Parallel.For(0, height, y =>
+            {
+                var sourceRow = y * sourceRowBytes;
+                var outputRow = y * width * 4;
+
+                for (var x = 0; x < width; x++)
+                {
+                    var src = sourceRow + x * 8;
+                    var r = ReadHalf(sourcePixels, src);
+                    var g = ReadHalf(sourcePixels, src + 2);
+                    var b = ReadHalf(sourcePixels, src + 4);
+                    var a = ReadHalf(sourcePixels, src + 6);
+
+                    toneMapper?.Map(ref r, ref g, ref b);
+
+                    var dst = outputRow + x * 4;
+                    outputPixels[dst] = HdrToneMapper.LinearToSrgbByte(b, x, y, 0);
+                    outputPixels[dst + 1] = HdrToneMapper.LinearToSrgbByte(g, x, y, 1);
+                    outputPixels[dst + 2] = HdrToneMapper.LinearToSrgbByte(r, x, y, 2);
+                    outputPixels[dst + 3] =
+                        (byte)Math.Clamp((int)Math.Round(Math.Clamp(a, 0f, 1f) * 255f), 0, 255);
+                }
+            });
+
+            var bitmap = new Bitmap(width, height, DrawingPixelFormat.Format32bppArgb);
+            try
+            {
+                var bits = bitmap.LockBits(
+                    new Rectangle(0, 0, width, height),
+                    ImageLockMode.WriteOnly,
+                    DrawingPixelFormat.Format32bppArgb);
+
+                try
+                {
+                    for (var y = 0; y < height; y++)
+                    {
+                        var destination = IntPtr.Add(bits.Scan0, y * bits.Stride);
+                        System.Runtime.InteropServices.Marshal.Copy(outputPixels, y * width * 4, destination, width * 4);
+                    }
+                }
+                finally
+                {
+                    bitmap.UnlockBits(bits);
+                }
+
+                return bitmap;
+            }
+            catch
+            {
+                bitmap.Dispose();
+                throw;
             }
         }
         finally
         {
-            bitmap.UnlockBits(bits);
+            ArrayPool<byte>.Shared.Return(sourcePixels);
+            ArrayPool<byte>.Shared.Return(outputPixels);
         }
-
-        return bitmap;
     }
 
     private static float ReadHalf(byte[] row, int offset)
@@ -519,19 +446,5 @@ internal static class CaptureMethods
 
         NativeMethods.GetWindowRect(hwnd, out var rect);
         return rect;
-    }
-
-    private static long IntersectionArea(
-        NativeMethods.RECT window,
-        SharpDX.Mathematics.Interop.RawRectangle output)
-    {
-        var left = Math.Max(window.Left, output.Left);
-        var top = Math.Max(window.Top, output.Top);
-        var right = Math.Min(window.Right, output.Right);
-        var bottom = Math.Min(window.Bottom, output.Bottom);
-
-        return right <= left || bottom <= top
-            ? 0
-            : (long)(right - left) * (bottom - top);
     }
 }

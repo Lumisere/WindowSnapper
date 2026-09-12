@@ -104,8 +104,14 @@ public sealed partial class MainWindow
             CopyLatestToClipboard = _settings.CopyLatestToClipboard,
             NormalizeHdrCaptures = _settings.NormalizeHdrCaptures,
             CaptureCursor = _settings.CaptureCursor,
+            ExclusiveFullscreenCompatibility = _settings.ExclusiveFullscreenCompatibility,
+            CaptureWatermarkEnabled = _settings.CaptureWatermarkEnabled,
+            CaptureVerificationSecret = _settings.CaptureVerificationSecret,
+            HotkeysEnabled = _settings.HotkeysEnabled,
+            CaptureNowHotkey = _settings.CaptureNowHotkey,
+            ToggleCaptureHotkey = _settings.ToggleCaptureHotkey,
 
-            // Keep legacy values in sync when saving.
+            // Old config files still expect these. Congratulations, we own this baggage forever.
             ScreenshotToastEnabled = mode == NotificationTriggerMode.EveryScreenshots,
             TimedNotificationEnabled = mode == NotificationTriggerMode.TimedReminder,
             ToastWidth = 344 * NormalizeToastScale(_settings.ToastScale),
@@ -149,8 +155,6 @@ public sealed partial class MainWindow
 
     private static double NormalizeToastDuration(double seconds) =>
         Math.Clamp(double.IsFinite(seconds) && seconds > 0 ? seconds : 6.0, 2.0, 15.0);
-
-
 
     private static double NormalizeNotificationVolume(double volume) =>
         Math.Clamp(double.IsFinite(volume) ? volume : 0.75, 0.0, 1.0);

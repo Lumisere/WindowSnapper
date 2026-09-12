@@ -8,8 +8,11 @@ internal sealed class HdrToneMapper
     private const float DefaultHdrSdrWhiteNits = 203f;
     private const float SdrWhiteNits = 80f;
     private const int HistogramBins = 1024;
+    private const int SrgbLutSize = 4096;
+    private const int ToneMapLutSize = 4096;
+    private static readonly float[] SrgbLut = BuildSrgbLut();
 
-    // ST 2084 / PQ constants.
+    // ST 2084 constants. Welcome to the math soup; spoons are optional.
     private const float PqM1 = 0.1593017578125f;
     private const float PqM2 = 78.84375f;
     private const float PqC1 = 0.8359375f;
@@ -26,6 +29,7 @@ internal sealed class HdrToneMapper
     private readonly float _highlightCompression;
     private readonly float _outputKnee;
     private readonly float _outputCeiling;
+    private readonly float[]? _luminanceLut;
 
     private HdrToneMapper(float targetWhiteNits, float sourcePeakNits)
     {
@@ -53,6 +57,16 @@ internal sealed class HdrToneMapper
         }
         _outputKnee = Lerp(0.65f, 0.32f, _highlightCompression);
         _outputCeiling = Lerp(1.0f, 0.72f, _highlightCompression);
+
+        if (_needsRolloff)
+        {
+            _luminanceLut = new float[ToneMapLutSize + 1];
+            for (var i = 0; i <= ToneMapLutSize; i++)
+            {
+                var nits = _sourcePeakNits * i / ToneMapLutSize;
+                _luminanceLut[i] = MapLuminanceCore(nits);
+            }
+        }
     }
 
     public static HdrToneMapper Analyze(byte[] pixels, int width, int height)
@@ -64,9 +78,7 @@ internal sealed class HdrToneMapper
         var samples = 0;
         var maxNits = 0f;
 
-        // A sparse scan is enough for exposure/peak selection and saves a lot of
-        // work on 1440p/4K captures. The 99th percentile intentionally ignores
-        // tiny single-pixel outliers.
+        // Reading every 4K pixel here is just burning CPU for cardio. Sparse sample + p99 ignores the one neon idiot ruining the party.
         var pixelCount = width * height;
         var stride = pixelCount > 4_000_000 ? 8 : pixelCount > 1_000_000 ? 4 : 2;
 
@@ -103,10 +115,7 @@ internal sealed class HdrToneMapper
 
         var percentileNits = HistogramPercentile(histogram, samples, 0.99f);
 
-        // On an SDR desktop, FP16 WGC frames generally top out around the
-        // scRGB 1.0 / 80-nit reference. HDR desktops place ordinary SDR white
-        // much higher. This keeps SDR-only systems from being dimmed by the HDR
-        // path while retaining Windows' common 203-nit HDR reference white.
+        // SDR and HDR disagree about what “white” means, because of course they do. Keep SDR sane and use the usual 203-nit HDR reference.
         var targetWhite = percentileNits <= 110f && maxNits <= 140f
             ? SdrWhiteNits
             : DefaultHdrSdrWhiteNits;
@@ -131,9 +140,7 @@ internal sealed class HdrToneMapper
         var inputNits = inputLuminance * ScRgbNitsPerUnit;
         var outputNits = _needsRolloff ? MapLuminance(inputNits) : inputNits;
 
-        // Preserve hue by mapping luminance once and applying the same ratio to
-        // all channels. The second factor converts absolute scRGB nits into a
-        // normal SDR [0,1] linear-light image where 1.0 is SDR reference white.
+        // Tone-map luminance once, reuse the ratio for RGB, and keep the hue from wandering off to start a new life.
         var scale = outputNits / inputNits * (ScRgbNitsPerUnit / _targetWhiteNits);
         r *= scale * _brightness;
         g *= scale * _brightness;
@@ -144,6 +151,18 @@ internal sealed class HdrToneMapper
     }
 
     private float MapLuminance(float inputNits)
+    {
+        inputNits = Math.Clamp(inputNits, 0f, _sourcePeakNits);
+        if (_luminanceLut is null || _sourcePeakNits <= 0.000001f)
+            return inputNits;
+
+        var scaled = inputNits / _sourcePeakNits * ToneMapLutSize;
+        var index = Math.Min((int)scaled, ToneMapLutSize - 1);
+        var fraction = scaled - index;
+        return _luminanceLut[index] + (_luminanceLut[index + 1] - _luminanceLut[index]) * fraction;
+    }
+
+    private float MapLuminanceCore(float inputNits)
     {
         inputNits = Math.Clamp(inputNits, 0f, _sourcePeakNits);
         if (_sourcePeakPq <= 0.000001f)
@@ -162,8 +181,6 @@ internal sealed class HdrToneMapper
             var t2 = t * t;
             var t3 = t2 * t;
 
-            // BT.2390 Hermite shoulder. Black-level lift is intentionally zero
-            // for screenshots, so only the highlight shoulder is required.
             e2 = (2f * t3 - 3f * t2 + 1f) * _kneeStart
                + (t3 - 2f * t2 + t) * (1f - _kneeStart)
                + (-2f * t3 + 3f * t2) * _maxLum;
@@ -186,9 +203,7 @@ internal sealed class HdrToneMapper
         var fullRange = Math.Max(0.0001f, 1f - _outputKnee);
         var endSlope = ceilingRange / fullRange;
 
-        // Cubic shoulder with a unit slope at the knee and a flat slope at the
-        // configured ceiling. Midtones barely move; only the upper range folds
-        // down, which avoids bringing back crushed shadows.
+        // Leave the mids alone and fold the bright stuff down. Several hideous test gradients died so this curve could live.
         var quadratic = 3f * endSlope - 2f;
         var cubic = 1f - 2f * endSlope;
         var shaped = t + quadratic * t * t + cubic * t * t * t;
@@ -232,13 +247,12 @@ internal sealed class HdrToneMapper
     public static byte LinearToSrgbByte(float value, int x, int y, int channel)
     {
         value = Math.Clamp(value, 0f, 1f);
-        var srgb = value <= 0.0031308f
-            ? value * 12.92f
-            : 1.055f * MathF.Pow(value, 1f / 2.4f) - 0.055f;
+        var scaled = value * SrgbLutSize;
+        var index = Math.Min((int)scaled, SrgbLutSize - 1);
+        var fraction = scaled - index;
+        var srgb = SrgbLut[index] + (SrgbLut[index + 1] - SrgbLut[index]) * fraction;
 
-        // Tiny deterministic dither before 8-bit quantization. This is most
-        // noticeable in HDR skies, fog and gradients after the range is folded
-        // down to SDR.
+        // Tiny deterministic dither keeps 8-bit skies from becoming staircase bullshit.
         var hash = unchecked((uint)(x * 0x1f123bb5) ^ (uint)(y * 0x05491333) ^ (uint)(channel * 0x68bc21eb));
         hash ^= hash >> 16;
         hash *= 0x7feb352d;
@@ -246,6 +260,19 @@ internal sealed class HdrToneMapper
         var noise = ((hash & 1023u) / 1023f - 0.5f) / 255f;
 
         return (byte)Math.Clamp((int)MathF.Round((srgb + noise) * 255f), 0, 255);
+    }
+
+    private static float[] BuildSrgbLut()
+    {
+        var result = new float[SrgbLutSize + 1];
+        for (var i = 0; i <= SrgbLutSize; i++)
+        {
+            var value = i / (float)SrgbLutSize;
+            result[i] = value <= 0.0031308f
+                ? value * 12.92f
+                : 1.055f * MathF.Pow(value, 1f / 2.4f) - 0.055f;
+        }
+        return result;
     }
 
     private static float Luminance(float r, float g, float b) => 0.2126f * r + 0.7152f * g + 0.0722f * b;
@@ -256,7 +283,7 @@ internal sealed class HdrToneMapper
 
     private static int HistogramIndex(float nits)
     {
-        const float logMax = 13.287856f; // log2(10001)
+        const float logMax = 13.287856f; // log2(10001). Recomputing it here would be performance cosplay.
         var normalized = MathF.Log2(nits + 1f) / logMax;
         return Math.Clamp((int)(normalized * (HistogramBins - 1)), 0, HistogramBins - 1);
     }

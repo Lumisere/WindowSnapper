@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Threading;
 
 namespace WindowSnapper;
@@ -18,6 +19,10 @@ public sealed partial class ToastWindow : Window
     public ToastWindow(string title, string message, double scale, double durationSeconds)
     {
         InitializeComponent();
+
+        var toastFont = new FontFamily(OperatingSystem.IsWindows() ? "Segoe UI" : "DejaVu Sans");
+        TitleText.FontFamily = toastFont;
+        MessageText.FontFamily = toastFont;
 
         scale = Math.Clamp(double.IsFinite(scale) && scale > 0 ? scale : 1, 0.8, 2.0);
         durationSeconds = Math.Clamp(double.IsFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 6.0, 2.0, 15.0);
